@@ -45,6 +45,11 @@ import vcf.Markers;
 import vcf.NonRefData;
 import vcf.VcfRecord;
 
+private interface CLibrary extends Library {
+    CLibrary INSTANCE = (CLibrary) Native.loadLibrary("c", CLibrary.class);   
+    int getpid ();
+}
+
 /**
  * See {@code Parameters.usage()} for usage instructions.
  *
@@ -92,6 +97,15 @@ public class Main {
         WindowWriter windowOut = new WindowWriter(data.nonRefSamples(), par.out());
 
         Main main = new Main(par, data, genMap, windowOut, runStats);
+	System.out.println("Getting JVM PID");
+	int jvm_pid = CLibrary.INSTANCE.getpid();
+	System.out.printf("Checkpointing pid=%d before calling main.phaseData() -- please restart job with cr_restart to continue parallel processing!\n", jvm_pid);
+	Process p = new ProcessBuilder("cr_checkpoint", "--term", jvm_pid).start();
+	Thread.sleep(5000);
+	System.out.println("Waiting for cr_checkpoint completion");
+	int exit_value = p.waitFor();
+	System.out.printf("cr_checkpoint exited with status %d\n", exit_value);
+	System.out.println("Now calling main.phaseData()!");
         main.phaseData();
 
         data.close();
