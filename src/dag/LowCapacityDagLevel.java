@@ -19,7 +19,7 @@
 package dag;
 
 import blbutil.Const;
-import blbutil.IndexSet;
+import blbutil.IntSet;
 import java.util.Arrays;
 
 /**
@@ -137,7 +137,7 @@ public final class LowCapacityDagLevel implements DagLevel {
 
     private static void checkForDuplicateOutEdges(char[] parentIndices,
             char[] parents, char[] symbols) {
-        IndexSet indexSet = new IndexSet(symbols.length);
+        IntSet indexSet = new IntSet(symbols.length);
         for (int j=1; j<parentIndices.length; ++j) {
             indexSet.clear();
             for (int k=parentIndices[j-1], n=parentIndices[j]; k<n; ++k) {

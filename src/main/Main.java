@@ -65,8 +65,8 @@ public class Main {
     /**
      * The program name and version.
      */
-    public static final String program = "beagle.09Feb16.2b7.jar (version 4.1)";
-    public static final String command = "java -jar beagle.09Feb16.2b7.jar";
+    public static final String program = "beagle.22Feb16.8ef.jar (version 4.1)";
+    public static final String command = "java -jar beagle.22Feb16.8ef.jar";
 
     /**
      * The copyright string.
@@ -78,7 +78,7 @@ public class Main {
      */
     public static final String shortHelp = Main.program
             + Const.nl + Main.copyright
-            + Const.nl + "Enter \"java -jar beagle.09Feb16.2b7.jar\" for a "
+            + Const.nl + "Enter \"java -jar beagle.22Feb16.8ef.jar\" for a "
             + "summary of command line " + "arguments.";
 
     private final Par par;

@@ -89,7 +89,7 @@ public final class Score implements Comparable<Score> {
      * returns {@code false} otherwise
      */
     public boolean isMergeable() {
-        return score > 0;
+        return score>=0;
     }
 
     /**

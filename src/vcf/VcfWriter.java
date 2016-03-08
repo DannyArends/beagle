@@ -50,11 +50,11 @@ public final class VcfWriter {
     private static final String afInfo = "##INFO=<ID=AF,Number=A,Type=Float,"
             + "Description=\"Estimated Allele Frequencies\">";
     private static final String ar2Info = "##INFO=<ID=AR2,Number=1,Type=Float,"
-            + "Description=\"Allelic R-Squared: estimated correlation between "
-            + "most probable ALT dose and true ALT dose\">";
-    private static final String dr2Info = "##INFO=<ID=DR2,Number=A,Type=Float,"
-            + "Description=\"Dosage R-Squared: estimated correlation between "
-            + "estimated ALT dose [P(RA) + 2*P(AA)] and true ALT dose\">";
+            + "Description=\"Allelic R-Squared: estimated squared correlation between "
+            + "most probable REF dose and true REF dose\">";
+    private static final String dr2Info = "##INFO=<ID=DR2,Number=1,Type=Float,"
+            + "Description=\"Dosage R-Squared: estimated squared correlation between "
+            + "estimated REF dose [P(RA) + 2*P(RR)] and true REF dose\">";
 
     private static final String gtFormat = "##FORMAT=<ID=GT,Number=1,Type=String,"
             + "Description=\"Genotype\">";

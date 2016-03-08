@@ -48,6 +48,7 @@ public final class MergeableDag {
     private static final Score MAX_SCORE =
             new Score(-1, -1, Float.POSITIVE_INFINITY, false);
     private static final float MAX_THRESHOLD_RATIO = 1.4f;
+    private static final int MIN_DEPTH = 10;
 
     private final float scale;
     private final Dag dag;
@@ -121,7 +122,7 @@ public final class MergeableDag {
                     float ratio = (nUnmergedAtLeaf / maxUnmerged);
                     int depth = (leaf.index() - current.index());
                     int readDepth = nextReadDepth(ratio, depth, lastReadDepth);
-                    if (readDepth>=0) {
+                    if (readDepth>depth) {
                         leaf = readLevels(it, (readDepth - depth), leaf);
                         lastReadDepth = readDepth;
                     }
@@ -174,7 +175,7 @@ public final class MergeableDag {
     private static int nextReadDepth(float unmergedRatio, int depth,
             int lastDepth) {
         if (unmergedRatio <= 1) {
-            return -1;
+            return MIN_DEPTH;
         }
         else if (depth < (0.85*lastDepth) ) {
             return 1 + (int) Math.round(0.95*lastDepth);

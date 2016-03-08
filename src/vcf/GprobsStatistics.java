@@ -25,12 +25,16 @@ import main.AlleleProbs;
 import main.GenotypeValues;
 
 /**
- * Class {@code GprobsStatistics} has methods for computing statistics
+ * <p>Class {@code GprobsStatistics} has methods for computing statistics
  * from posterior genotype probabilities.
+ * </p>
  *
- * The squared correlation statistics computed by this class can be derived
+ * <p>The squared correlation statistics computed by this class can be derived
  * using the methods found in Appendix 1 of
  * "Browning BL and Browning SR, Am J Hum Genet 2009;84(2):210-23".
+ * If a variant has multiple ALT alleles, all ALT alleles are collapsed
+ * into a single allele when computing the squared correlation statistics.
+ * </p>
  *
  * @author Brian L. Browning {@code <browning@uw.edu>}
  */
