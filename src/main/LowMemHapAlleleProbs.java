@@ -72,12 +72,12 @@ public class LowMemHapAlleleProbs implements HapAlleleProbs {
             int end = markers.sumAlleles(m+1);
             for (int j=start; j<end; ++j) {
                 float p = alleleProbs[j];
-                if (p < 0 || p > 1.0001f || Float.isNaN(p)) {
+                if (p < 0 || p > 1.01f || Float.isNaN(p)) {
                     throw new IllegalArgumentException(String.valueOf(p));
                 }
                 sum += alleleProbs[j];
             }
-            if (sum > 1.0001f) {
+            if (sum > 1.01f) {
                 throw new IllegalArgumentException(String.valueOf(sum));
             }
             for (int j=start; j<end - 1; ++j) {

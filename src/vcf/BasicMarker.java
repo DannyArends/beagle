@@ -125,7 +125,8 @@ public class BasicMarker implements Marker {
 
     private static void checkAlleles(int chrom, int pos, String[] alleles) {
         if (alleles.length<2) {
-            String s = String.valueOf(alleles.length);
+            String s = "ERROR: missing REF or ALT allele at "
+                    + coordinate(chrom, pos);
             throw new IllegalArgumentException(s);
         }
         Set<String> set = new HashSet<>(Arrays.asList(alleles));

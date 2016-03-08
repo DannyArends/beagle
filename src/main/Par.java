@@ -122,7 +122,7 @@ public final class Par {
         maxlr = Validate.floatArg("maxlr", argsMap, false, 5000.0f, 1.1f, FMAX);
 
         // algorithm parameters
-        nthreads = Validate.intArg("nthreads", argsMap, false, 1, 1, 100000);
+        nthreads = modNthreads(Validate.intArg("nthreads", argsMap, false, IMAX, 0, IMAX));
         lowmem = Validate.booleanArg("lowmem", argsMap, false, true);
         window = Validate.intArg("window", argsMap, false, 50000, 1, IMAX);
         overlap = Validate.intArg("overlap", argsMap, false, 3000, 0, IMAX);
@@ -183,7 +183,7 @@ public final class Par {
                 + "  maxlr=<max GL/PL likelihood ratio>                 (default=5000)" + nl + nl
 
                 + "general parameters ..." + nl
-                + "  nthreads=<number of threads>                       (default=1)" + nl
+                + "  nthreads=<number of threads>                       (default: machine-dependent)" + nl
                 + "  lowmem=<use low-memory algorithm (true/false)>     (default=false)" + nl
                 + "  window=<markers per window>                        (default=50000)" + nl
                 + "  overlap=<overlap between windows>                  (default=3000)" + nl
@@ -224,6 +224,21 @@ public final class Par {
         }
         else {
             return ibdscale;
+        }
+    }
+
+    /**
+     * Returns the nthreads parameter, which is equal to
+     * {@code Runtime.getRuntime().availableProcessors()} if
+     * {@code nthreads == Integer.MAX_VALUE}.
+     * @return the nthreads parameter
+     */
+    private static int modNthreads(int nthreads) {
+        if (nthreads==Integer.MAX_VALUE) {
+            return Runtime.getRuntime().availableProcessors();
+        }
+        else {
+            return nthreads;
         }
     }
 
@@ -358,7 +373,7 @@ public final class Par {
     }
 
     /**
-     * Returns the lowmem parameter
+     * Returns the lowmem parameter.
      * @return the lowmem parameter
      */
     public boolean lowmem() {
