@@ -19,7 +19,7 @@
 package dag;
 
 /**
- * <p>Class {@code Score} stores a similarity score for a pair
+ * <p>Class {@code Score} represents a similarity score for a pair
  * of trees.
  * </p>
  * Instances of class {@code Score} are immutable.
@@ -33,25 +33,21 @@ public final class Score implements Comparable<Score> {
     private final float score;
 
     /**
-     * Constructs a new {@code Score} instance.
-     *
-     * @param nodeA root node index for the first tree.
-     * @param nodeB root node index for the second tree.
-     * @param score the similarity score for the two specified trees.
+     * Constructs a new {@code Score} instance.  Smaller similarity scores
+     * correspond to greater similarity.
+     * @param nodeA root node index for the first tree
+     * @param nodeB root node index for the second tree
+     * @param score the a non-negative similarity score for the two specified
+     * trees
      * @param isMergeable {@code true} if the two trees may be
-     * merged, and {@code false} otherwise.
+     * merged, and {@code false} otherwise
      * @throws IllegalArgumentException if
-     * {@code score < 0 || (score==0 && isMergeable==false)}.
+     * {@code score < 0 || (score==0 && isMergeable==false)}
+     * @throws IllegalArgumentException if {@code Float.isNaN(score)}
      */
     public Score(int nodeA, int nodeB, float score, boolean isMergeable) {
-        if (score < 0) {
-            if (score==0 && isMergeable==false) {
-                String s = "isMergeable==false && score==0.0f";
-                throw new IllegalArgumentException(s);
-            }
-            else {
-                throw new IllegalArgumentException("score: " + score);
-            }
+        if (score < 0 || (score==0 && isMergeable==false) || Float.isNaN(score)) {
+            throw new IllegalArgumentException(String.valueOf(score));
         }
         this.nodeA = nodeA;
         this.nodeB = nodeB;
@@ -61,7 +57,7 @@ public final class Score implements Comparable<Score> {
     /**
      * Returns the root node index for the first tree.
      *
-     * @return the root node index for the first tree.
+     * @return the root node index for the first tree
      */
     public int nodeA() {
         return nodeA;
@@ -70,17 +66,16 @@ public final class Score implements Comparable<Score> {
     /**
      * Returns the root node index for the second tree.
      *
-     * @return the root node index for the second tree.
+     * @return the root node index for the second tree
      */
     public int nodeB() {
         return nodeB;
     }
 
     /**
-     * Returns the similarity score for the two trees.  Smaller scores
-     * correspond to greater similarity.
+     * Returns the similarity score for the two trees.
      *
-     * @return the similarity score for the two trees.
+     * @return the similarity score for the two trees
      */
     public float score() {
         return (score < 0) ? -score : score;
@@ -91,7 +86,7 @@ public final class Score implements Comparable<Score> {
      * returns {@code false} otherwise.
      *
      * @return {@code true} if the two trees may be merged, and
-     * returns {@code false} otherwise.
+     * returns {@code false} otherwise
      */
     public boolean isMergeable() {
         return score > 0;
@@ -105,12 +100,8 @@ public final class Score implements Comparable<Score> {
      * same values as the corresponding methods for {@code  this}, and
      * returns {@code  false} otherwise.
      * @param obj the object to be compared for equality with this
-     * {@code  Score}.
-     * @return {@code  true} if the specified object
-     * is a {@code Score} instance whose {@code nodeA()}, {@code nodeB()},
-     * {@code score()}, and {@code isMergeable()} methods return the
-     * same values as the corresponding methods for {@code  this}, and
-     * returns {@code  false} otherwise.
+     * {@code  Score}
+     * @return {@code  true} if the specified object is a equal to {@code this}
      */
     @Override
     public boolean equals(Object obj) {
@@ -132,8 +123,16 @@ public final class Score implements Comparable<Score> {
     }
 
      /**
-     * Returns a hash code value for the object.
-     * @return a hash code value for the object.
+     * <p>Returns the hash code value for this object. The hash code is defined
+     * by the following calculation:
+     * </p>
+     * <pre>
+     *  int hash = 5;
+     *  hash = 53 * hash + this.nodeA();
+     *  hash = 53 * hash + this.nodeB();
+     *  hash = 53 * hash + Float.floatToIntBits(this.score());
+     </pre>
+     * @return a hash code value for the object
      */
     @Override
     public int hashCode() {
@@ -147,17 +146,17 @@ public final class Score implements Comparable<Score> {
     /**
      * Returns -1, 0, or 1 depending on whether this {@code Score} is less
      * than, equal to, or greater than the specified {@code Score}.  The
-     * two scores are ordered first using {@code Boolean.compare()} on
-     * the value returned by {@code -isMergeable()}, then by
+     * two scores are ordered first using {@code -Boolean.compare()} on
+     * the value returned by {@code isMergeable()}, then by
      * {@code Float.compare()} on the value returned by {@code score()}, then
      * by the value returned by {@code nodeA()}, and then by the value returned
      * by {@code nodeB()}.
-     * @param other a {@code Score} element to be compared.
+     * @param other a {@code Score} element to be compared
      * @return a negative integer, zero, or a positive integer depending
      * on whether this {@code Score} is less than, equal to, or greater
-     * than the specified {@code Score}.
+     * than the specified {@code Score}
      *
-     * @throws NullPointerException if {@code other==null}.
+     * @throws NullPointerException if {@code other == null}
      */
     @Override
     public int compareTo(Score other) {
@@ -182,7 +181,7 @@ public final class Score implements Comparable<Score> {
      * Returns a string representation of {@code this}. The exact details of
      * the representation are unspecified and subject to change.
      *
-     * @return a string representation of {@code this}.
+     * @return a string representation of {@code this}
      */
     @Override
     public String toString() {

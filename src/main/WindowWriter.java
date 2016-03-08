@@ -22,8 +22,8 @@ import beagleutil.Samples;
 import blbutil.Const;
 import blbutil.FileUtil;
 import blbutil.IntPair;
-import haplotype.SampleHapPairs;
 import ibd.IbdSegment;
+import java.io.Closeable;
 import java.io.File;
 import java.io.PrintWriter;
 import java.text.DecimalFormat;
@@ -34,12 +34,14 @@ import java.util.Map;
 import vcf.VcfWriter;
 
 /**
- * Class for writing Beagle VCF and IBD output data in overlapping
- * marker windows.
+ * <p>Class {@code WindowWriter} writes VCF and IBD output data.
+ * </p>
+ * <p>Instances of class {@code WindowWriter} are not thread-safe.
+ * </p>
  *
  * @author Brian L. Browning {@code <browning@uw.edu>}
  */
-public class WindowWriter {
+public class WindowWriter implements Closeable {
 
     private static final DecimalFormat df2 = new DecimalFormat("#.##");
 
@@ -54,19 +56,17 @@ public class WindowWriter {
     private final Map<IntPair, IbdSegment> ibdBuffer = new HashMap<>();
 
     /**
-     * Constructs a {@code WindowWriter} object.
-     * @param samples the sample whose data will be printed.
-     * @param outPrefix the output file prefix.
+     * Constructs a new {@code WindowWriter} object.
+     * @param samples the sample whose data will be printed
+     * @param outPrefix the output file prefix
      *
-     * @throws IllegalArgumentException if {@code outPrefix.length()==0}
-     * @throws NullPointerException if {@code samples==null || outPrefix==null}
+     * @throws IllegalArgumentException if {@code outPrefix.length() == 0}
+     * @throws NullPointerException if
+     * {@code samples == null || outPrefix == null}
      */
     public WindowWriter(Samples samples, String outPrefix) {
         if (samples==null) {
             throw new NullPointerException("samples==null");
-        }
-        if (outPrefix==null) {
-            throw new NullPointerException("outPrefix==null");
         }
         if (outPrefix.length()==0) {
             throw new IllegalArgumentException("outPrefix.length()==0");
@@ -80,13 +80,13 @@ public class WindowWriter {
         boolean printGT = true;
         boolean printGP = true;
         boolean printGL = false;
-        VcfWriter.writeMetaLines(samples.ids(), Main.version,
+        VcfWriter.writeMetaLines(samples.ids(), Main.program,
                 printGT, printGP, printGL, vcfOut);
     }
 
     /**
-     * Returns the samples.
-     * @return the samples.
+     * Returns the samples whose data is written by {@code this}.
+     * @return the samples whose data is written by {@code this}
      */
     public Samples samples() {
         return samples;
@@ -98,99 +98,114 @@ public class WindowWriter {
      * been previously invoked and returns {@code false} otherwise.
      *
      * @return {@code true} if {@code this.close()} method has
-     * been previously invoked and {@code false} otherwise.
+     * been previously invoked
      */
     public boolean isClosed() {
         return isClosed;
     }
 
     /**
-     * Closes this {@code WindowWriter} for writing.  Any call to the
-     * {@code print()} after invoking {@code close()} will
+     * Closes this {@code WindowWriter} for writing.  Calling the
+     * {@code print()} method after invoking {@code close()} will
      * throw an {@code IllegalStateException}.
      */
+    @Override
     public void close() {
         vcfOut.close();
         isClosed = true;
     }
 
     /**
-     * Submits the specified window of data to be printed.  The data in
-     * {@code hapPair} and {@code gv} between markers with index
-     * {@code lastSplice} (inclusive) and {@code nextSplice} (exclusive)
-     * will be printed.  HBD segments and IBD segments which terminate
-     * in this region will be printed after being merged any corresponding
-     * HBD and IBD segments from the previous window that did not
-     * definitely terminate in the previous window.
-     * HBD segments and IBD segments which could extend beyond this region
-     * will be stored and will be merged with any corresponding
-     * HBD and IBD segments in the next marker window.
+     * Prints VCF records with GT and GP format fields for markers with
+     * index between {@code cd.lastSplice()} (inclusive) and
+     * {@code cd.nextSplice()} (exclusive).
      *
-     * <p>It is the the caller's responsibility to ensure that the ordered
-     * haplotype pairs in the overlap between adjacent marker windows
-     * are identical for each sample.
-     * </p>
+     * @param cd the input data for the current marker window
+     * @param gv scaled genotype probabilities for the target samples
      *
-     * @param hapPairs the haplotype pairs.
-     * @param gv the scaled posterior genotype probabilities.  If
-     * {@code gv==null}, no posterior genotype probabilities will be printed.
-     * @param ibdMap a map whose keys are pairs of haplotype indices and whose
-     * values are lists of IBD segments involving the haplotype pair key.
-     * If {@code ibdMap==null}, no IBD segments will be printed.
-     * @param lastSplice first index after splice point for the last marker
-     * window.
-     * @param nextOverlap first index of overlap with the next marker window.
-     * @param nextSplice first index after splice point for the next marker
-     * window.
-     *
-     * @throws IllegalStateException if {@code this.isClosed()==true}.
-     * @throws NullPointerException if {@code hapPairs==null}
-     * @throws IllegalArgumentException if
-     * {@code this.samples().equals(haps.samples())==false}
-     * @throws IllegalArgumentException if
-     * {@code gv!=null && this.samples().equals(gv.samples())==false}
-     * @throws IllegalArgumentException if
-     * {@code gv!=null && haps.markers().equals(gv.markers())==false}
-     * @throws IndexOutOfBoundsException if
-     * {@code lastSplice<0 || lastSplice>nextOverlap || nextOverlap>nextSplice
-     *           || nextSplice>haps.nMarkers()}
+     * @throws NullPointerException if {@code cd == null || gv == null}
      */
-    public void print(SampleHapPairs hapPairs,
-            GenotypeValues gv, Map<IntPair, List<IbdSegment>> ibdMap,
-            int lastSplice, int nextOverlap, int nextSplice) {
+    public void printGV(CurrentData cd, GenotypeValues gv) {
         if (isClosed) {
             throw new IllegalStateException("isClosed()==true");
         }
-        checkData(hapPairs, gv, lastSplice, nextOverlap, nextSplice);
-
-        if (gv==null) {
-            VcfWriter.appendRecords(hapPairs, lastSplice, nextSplice, vcfOut);
-        }
-        else {
-            VcfWriter.appendRecords(hapPairs, gv, lastSplice, nextSplice, vcfOut);
-        }
+        VcfWriter.appendRecords(gv, cd.prevTargetSplice(),
+                cd.nextTargetSplice(), vcfOut);
         vcfOut.flush();
-
-        if (ibdMap!=null) {
-            printIbd(ibdMap, lastSplice, nextOverlap, nextSplice, hapPairs.nMarkers());
-            if (appendIbd==false) {
-                appendIbd = true;
-            }
-        }
     }
 
-    private void checkData(SampleHapPairs haps, GenotypeValues gv,
-            int lastSplice, int nextOverlap, int nextSplice) {
-        if (samples.equals(haps.samples())==false
-                || (gv!=null && samples.equals(gv.samples())==false)  ) {
-            throw new IllegalArgumentException("inconsistent samples");
+    /**
+     * Prints the data in {@code alProbs} for markers
+     * with index between {@code cd.lastSplice()} (inclusive) and
+     * {@code cd.nextSplice()} (exclusive).
+     *
+     * @param cd the input data for the current marker window
+     * @param alProbs the estimated haplotype allele probabilities
+     * @param r2 {@code true} if squared dosage correlation should be printed,
+     * and {@code false} otherwise
+     * @param gprobs {@code true} if the GP field should be printed, and
+     * {@code false} otherwise
+     *
+     * @throws IllegalStateException if {@code this.isClosed() == true}
+     * @throws IllegalArgumentException if
+     * {@code this.samples().equals(cd.targetSamples()) == false}
+     * @throws IllegalArgumentException if
+     * {@code this.samples().equals(alProbs.samples()) == false}
+     * @throws IllegalArgumentException if
+     * {@code cd.markers().equals(alProbs.markers()) == false}
+     * @throws NullPointerException if {@code cd == null || alProbs == null}
+     */
+    public void print(CurrentData cd, AlleleProbs alProbs, boolean r2,
+            boolean gprobs) {
+        if (isClosed) {
+            throw new IllegalStateException("isClosed()==true");
         }
-        if (gv!=null && haps.markers().equals(gv.markers())==false) {
+        if (cd.markers().equals(alProbs.markers())==false) {
             throw new IllegalArgumentException("inconsistent markers");
         }
-        if (lastSplice<0 || lastSplice>nextOverlap || nextOverlap>nextSplice
-                || nextSplice>haps.nMarkers()) {
-            throw new IndexOutOfBoundsException("index error");
+        if (samples.equals(cd.targetSamples()) == false
+                || samples.equals(alProbs.samples()) == false) {
+            throw new IllegalArgumentException("inconsistent samples");
+        }
+        int start = cd.prevSplice();
+        int end = cd.nextSplice();
+        VcfWriter.appendRecords(alProbs, start, end, r2, gprobs, vcfOut);
+        vcfOut.flush();
+    }
+
+    /**
+     * Prints IBD segments that end between the markers
+     * with index between {@code cd.lastSplice()} (inclusive) and
+     * {@code cd.nextSplice()} (exclusive).
+     * IBD segments that end on or after the marker with index
+     * {@code cd.nextSplice()} are saved so that they can be merged
+     * with IBD segments from the next marker window.
+     *
+     * <p>It is the the caller's responsibility to ensure that the ordered
+     * haplotype pairs between adjacent consecutive markers windows
+     * are identical for each sample.
+     * </p>
+     *
+     * @param cd the input data for the current window
+     * @param ibdMap a map whose keys are pairs of haplotype indices and whose
+     * values are lists of IBD segments involving the haplotype pair key
+     *
+     * @throws IllegalStateException if {@code this.isClosed()==true}
+     * @throws IllegalArgumentException if
+     * {@code this.samples().equals(cd.targetSamples()) == false}
+     * @throws NullPointerException if {@code cd == null || ibdMap == null}
+     */
+    public void printIbd(CurrentData cd, Map<IntPair, List<IbdSegment>> ibdMap) {
+        if (isClosed) {
+            throw new IllegalStateException("isClosed()==true");
+        }
+        if (samples.equals(cd.targetSamples()) == false) {
+            throw new IllegalArgumentException("inconsistent samples");
+        }
+        printIbd(ibdMap, cd.prevTargetSplice(), cd.nextTargetOverlap(),
+                cd.nextTargetSplice(), cd.nTargetMarkers());
+        if (appendIbd==false) {
+            appendIbd = true;
         }
     }
 
@@ -198,7 +213,7 @@ public class WindowWriter {
             int nextOverlap, int nextSplice, int nMarkers) {
         Map<IntPair, IbdSegment> lastBuffer = new HashMap<>(ibdBuffer);
         ibdBuffer.clear();
-        try (PrintWriter ibdOut=FileUtil.printWriter(ibdOutFile, appendIbd);
+        try (PrintWriter ibdOut = FileUtil.printWriter(ibdOutFile, appendIbd);
                PrintWriter hbdOut = FileUtil.printWriter(hbdOutFile, appendIbd)) {
             Iterator<IntPair> keyIt = ibd.keySet().iterator();
             while (keyIt.hasNext()) {

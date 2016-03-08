@@ -18,13 +18,16 @@
  */
 package haplotype;
 
+import beagleutil.Samples;
 import vcf.Marker;
 import vcf.Markers;
 
 /**
- * <p>Class {@code HaplotypesInterface} stores an list of haplotype pairs.
+ * <p>Interface {@code HapPairs} represents a list of haplotype pairs.
+ * Each haplotype pair is guaranteed to have two non-missing
+ * alleles at each marker.
  * </p>
- * All instances of {@code HaplotypesInterface} are required to
+ * All instances of {@code HapPairs} are required to
  * be immutable.
  *
  * @author Brian L. Browning {@code <browning@uw.edu>}
@@ -33,88 +36,97 @@ public interface HapPairs {
 
      /**
      * Returns the allele for the specified marker and haplotype.
-     * @param marker a marker index.
-     * @param haplotype a haplotype index.
-     * @return the allele for the specified marker and haplotype.
+     * @param marker a marker index
+     * @param haplotype a haplotype index
+     * @return the allele for the specified marker and haplotype
      *
      * @throws IndexOutOfBoundsException if
-     * {@code marker<0 || marker>=this.nMarkers()}
+     * {@code marker < 0 || marker >= this.nMarkers()}
      * @throws IndexOutOfBoundsException if
-     * {@code haplotype<0 || haplotype>=this.nHaps()}
+     * {@code haplotype < 0 || haplotype >= this.nHaps()}
      */
-    byte allele(int marker, int haplotype);
+    int allele(int marker, int haplotype);
 
     /**
      * Returns the first allele for the specified marker and haplotype pair.
-     * @param marker a marker index.
-     * @param hapPair a haplotype pair index.
-     * @return the first allele for the specified marker and haplotype pair.
+     * @param marker a marker index
+     * @param hapPair a haplotype pair index
+     * @return the first allele for the specified marker and haplotype pair
      *
      * @throws IndexOutOfBoundsException if
-     * {@code marker<0 || marker>=this.nMarkers()}
+     * {@code marker < 0 || marker >= this.nMarkers()}
      * @throws IndexOutOfBoundsException if
-     * {@code hapPair< 0 || hapPair>=this.nHapPairs()}
+     * {@code hapPair < 0 || hapPair >= this.nHapPairs()}
      */
-    byte allele1(int marker, int hapPair);
+    int allele1(int marker, int hapPair);
 
     /**
      * Returns the second allele for the specified marker and haplotype pair.
-     * @param marker a marker index.
-     * @param hapPair a haplotype pair index.
-     * @return the second allele for the specified marker and haplotype pair.
+     * @param marker a marker index
+     * @param hapPair a haplotype pair index
+     * @return the second allele for the specified marker and haplotype pair
      *
      * @throws IndexOutOfBoundsException if
-     * {@code marker<0 || marker>=this.nMarkers()}
+     * {@code marker < 0 || marker >= this.nMarkers()}
      * @throws IndexOutOfBoundsException if
-     * {@code hapPair< 0 || hapPair>=this.nHapPairs()}
+     * {@code hapPair < 0 || hapPair >= this.nHapPairs()}
      */
-    byte allele2(int marker, int hapPair);
+    int allele2(int marker, int hapPair);
 
     /**
-     * Returns the number of markers. The returned value is equal to
-     * {@code this.markers().nMarkers()}.
-     * @return the number of markers.
+     * Returns the number of markers.
+     * @return the number of markers
      */
     int nMarkers();
 
     /**
-     * Returns the markers in each haplotype.
-     * @return the markers in each haplotype
+     * Returns the markers.
+     * @return the markers
      */
     Markers markers();
 
     /**
      * Returns the specified marker.
-     * @param marker a marker index.
-     * @return the specified marker.
+     * @param marker a marker index
+     * @return the specified marker
      * @throws IndexOutOfBoundsException if
-     * {@code marker<0 || marker>=this.nMarkers()}
+     * {@code marker < 0 || marker >= this.nMarkers()}
      */
     Marker marker(int marker);
 
     /**
      * Returns the number of haplotypes.  The returned value is equal to
      * {@code 2*this.nHapPairs()}.
-     * @return the number of haplotypes.
+     * @return the number of haplotypes
      */
     int nHaps();
 
     /**
      * Returns the number of haplotype pairs.  The returned value is
      * equal to {@code this.nHaps()/2}.
-     * @return the number of haplotype pairs.
+     * @return the number of haplotype pairs
      */
     int nHapPairs();
 
     /**
-     * Returns the sample identifier index corresponding to the specified
-     * haplotype pair.
-     * @param hapPair a haplotype pair index.
-     * @return the sample identifier index corresponding to the specified
-     * haplotype pair.
+     * Returns a list of samples containing the sample associated with
+     * the specified haplotype pair
+     * @param hapPair a haplotype pair index
+     * @return a list of samples containing the sample associated with
+     * the specified haplotype pair
      * @throws IndexOutOfBoundsException if
-     * {@code hapPair<0 || hapPair>=this.nHapPairs()}
-     * @see beagleutil.SampleIds
+     * {@code hapPair < 0 || hapPair >= this.nHapPairs()}
      */
-    int idIndex(int hapPair);
+    public Samples samples(int hapPair);
+
+    /**
+     * Returns the index of the sample associated with the specified
+     * haplotype pair in the list of samples returned by {@code this.samples()}.
+     * @param hapPair a haplotype pair index
+     * @return the index of the sample associated with the specified
+     * haplotype pair in the list of samples returned by {@code this.samples()}
+     * @throws IndexOutOfBoundsException if
+     * {@code hapPair < 0 || hapPair >= this.nHapPairs()}
+     */
+    public int sampleIndex(int hapPair);
 }

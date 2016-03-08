@@ -18,20 +18,17 @@
  */
 package vcf;
 
-import beagleutil.SampleIds;
 import beagleutil.Samples;
-import blbutil.Const;
 import java.util.BitSet;
-import main.NuclearFamilies;
 
 /**
  * <p>Class {@code BitSetGT} represents genotype emission
- * probabilities for a set of samples at a single marker.
+ * probabilities for a list of samples at a single marker.
  * The genotype emission probabilities are determined by the called
  * genotypes for the samples.
  * </p>
- * <p>Class {@code BitSetGT} is designed to use a relatively small amount
- * of memory.
+ * <p>Class {@code BitSetGT} stores alleles using
+ * {@code java.util.BitSet} objects.
  * </p>
  * <p>Instances of class {@code BitSetGT} are immutable.
  * </p>
@@ -45,9 +42,9 @@ public final class BitSetGT implements VcfEmission {
      */
     public static final String GT_FORMAT = "GT";
 
-    private final byte bitsPerAllele;
-    private final Samples samples;
+    private final int bitsPerAllele;
     private final Marker marker;
+    private final Samples samples;
     private final boolean isRefData;
 
     private final BitSet allele1;
@@ -57,51 +54,111 @@ public final class BitSetGT implements VcfEmission {
     private final BitSet isPhased;
 
     /**
-     * Constructs a new {@code LowMemGT} instance representing
+     * Constructs a new {@code BitSetGT} instance representing
      * the specified VCF record's GT format field data.
      *
-     * @param rec a VCF record.
-     * @param usePhase {@code true} if phase information in the specified
-     * VCF file record will be used, and {@code false} if phase
-     * information will be ignored.
+     * @param vcfHeader meta-information lines and header line for the
+     * specified VCF record.
+     * @param vcfRecord a VCF record corresponding to the specified
+     * {@code vcfHeader} object
      *
-     * @throws IllegalArgumentException if {@code rec.nSamples()==0}.
-     * @throws IllegalArgumentException if the VCF record does not have a
-     * "GT" format field.
-     * @throws NullPointerException if {@code rec==null}.
+     * @throws IllegalArgumentException if a format error is detected
+     * in the VCF record
+     * @throws IllegalArgumentException if {@code rec.nSamples() == 0}
+     * @throws IllegalArgumentException if the header line
+     * or VCF record does not have a "GT" format field
+     * @throws NullPointerException if
+     * {@code vcfHeader == null || vcfRecord == null}
      */
-    public BitSetGT(VcfRecord rec, boolean usePhase) {
-        this(rec);
-        setBits(rec, usePhase, bitsPerAllele, allele1, allele2, isMissing1,
+    public BitSetGT(VcfHeader vcfHeader, String vcfRecord) {
+        VcfRecGTParser gtp = new VcfRecGTParser(vcfHeader, vcfRecord);
+        this.marker = gtp.marker();
+        this.samples = vcfHeader.samples();
+        this.bitsPerAllele = bitsPerAllele(marker);
+        this.allele1 = new BitSet(vcfHeader.nSamples()*bitsPerAllele);
+        this.allele2 = new BitSet(vcfHeader.nSamples()*bitsPerAllele);
+        this.isMissing1 = new BitSet(vcfHeader.nSamples());
+        this.isMissing2 = new BitSet(vcfHeader.nSamples());
+        this.isPhased = new BitSet(vcfHeader.nSamples());
+        storeAlleles(gtp, bitsPerAllele, allele1, allele2, isMissing1,
                 isMissing2, isPhased);
+        this.isRefData = isRef(vcfHeader.nSamples(), isPhased, isMissing1, isMissing2);
     }
 
-    /**
-     * Constructs a new {@code LowMemGT} instance representing
-     * the specified VCF record's GT format field data.
-     *
-     * @param rec a VCF file record.
-     * @param fam parent-offspring relationships.
-     * @param usePhase {@code true} if phase information in the specified
-     * VCF file record will be used, and {@code false} if phase
-     * information in the specified VCF file record will be ignored.
-     *
-     * @throws IllegalArgumentException if
-     * {@code rec.nSamples()==0|| rec.samples().equals(fam.samples())==false}.
-     * @throws IllegalArgumentException if the VCF record does not have a
-     * GT format field.
-     * @throws NullPointerException if {@code rec==null || fam==null}.
-     */
-    public BitSetGT(VcfRecord rec, NuclearFamilies fam, boolean usePhase) {
-        this(rec);
-        if (rec.samples().equals(fam.samples())==false) {
-            throw new IllegalArgumentException("inconsistent samples");
+    private static void storeAlleles(VcfRecGTParser gtp,
+            int bitsPerAllele, BitSet allele1, BitSet allele2,
+            BitSet isMissing1, BitSet isMissing2, BitSet isPhased) {
+        int nSamples = gtp.nSamples();
+        for (int sample=0; sample<nSamples; ++sample) {
+            int a1 = gtp.allele1();
+            int a2 = gtp.allele2();
+            if (gtp.isPhased()) {
+                isPhased.set(sample);
+            }
+            if (a1 == -1) {
+                isMissing1.set(sample);
+            }
+            else {
+                storeAllele(allele1, sample, bitsPerAllele, a1);
+            }
+            if (a2 == -1) {
+                isMissing2.set(sample);
+            }
+            else {
+                storeAllele(allele2, sample, bitsPerAllele, a2);
+            }
+            if (sample + 1 < nSamples) {
+                gtp.nextSample();
+            }
         }
-        setBits(rec, usePhase, bitsPerAllele, allele1, allele2, isMissing1,
-                isMissing2, isPhased);
-        removeMendelianInconsistencies(rec, fam, isPhased, isMissing1,
-                isMissing2);
     }
+
+    private static void storeAllele(BitSet alleles, int sample,
+            int bitsPerAllele, int allele) {
+        int index = sample*bitsPerAllele;
+        int mask = 1;
+        for (int k=0; k<bitsPerAllele; ++k) {
+            if ((allele & mask)==mask) {
+                alleles.set(index);
+            }
+            ++index;
+            mask <<= 1;
+        }
+    }
+
+    private static boolean isRef(int nSamples, BitSet isPhased,
+            BitSet isMissing1, BitSet isMissing2) {
+        int nMissing = isMissing1.cardinality() + isMissing2.cardinality();
+        int nUnphased = nSamples - isPhased.cardinality();
+        return nMissing==0 && nUnphased==0;
+    }
+
+//    /**
+//     * Constructs a new {@code LowMemGT} instance representing
+//     * the specified VCF record's GT format field data.
+//     *
+//     * @param rec a VCF file record.
+//     * @param fam parent-offspring relationships.
+//     * @param usePhase {@code true} if phase information in the specified
+//     * VCF file record will be used, and {@code false} if phase
+//     * information in the specified VCF file record will be ignored.
+//     *
+//     * @throws IllegalArgumentException if
+//     * {@code rec.nSamples()==0|| rec.samples().equals(fam.samples())==false}.
+//     * @throws IllegalArgumentException if the VCF record does not have a
+//     * GT format field.
+//     * @throws NullPointerException if {@code rec==null || fam==null}.
+//     */
+//    public BitSetGT(VcfRecord rec, NuclearFamilies fam, boolean usePhase) {
+//        this(rec);
+//        if (rec.samples().equals(fam.samples())==false) {
+//            throw new IllegalArgumentException("inconsistent samples");
+//        }
+//        setBits(rec, usePhase, bitsPerAllele, allele1, allele2, isMissing1,
+//                isMissing2, isPhased);
+//        removeMendelianInconsistencies(rec, fam, isPhased, isMissing1,
+//                isMissing2);
+//    }
 
     private BitSetGT(VcfRecord rec) {
         int nSamples = rec.nSamples();
@@ -127,7 +184,7 @@ public final class BitSetGT implements VcfEmission {
 
     private static boolean isRef(VcfRecord rec) {
         for (int j=0, n=rec.nSamples(); j<n; ++j) {
-            if (rec.isPhased(j)==false || rec.gt(j, 0)<0 || rec.gt(j,1)<0) {
+            if (rec.isPhased(j)==false || rec.allele1(j)<0 || rec.allele2(j)<0) {
                 return false;
             }
         }
@@ -143,8 +200,8 @@ public final class BitSetGT implements VcfEmission {
             if (usePhase && rec.isPhased(j)) {
                 isPhased.set(j);
             }
-            byte a1 = rec.gt(j, 0);
-            byte a2 = rec.gt(j, 1);
+            int a1 = rec.allele1(j);
+            int a2 = rec.allele2(j);
             if (a1 < 0) {
                 isMissing1.set(j);
                 index1 += bitsPerAllele;
@@ -177,108 +234,113 @@ public final class BitSetGT implements VcfEmission {
         }
     }
 
-    private static byte bitsPerAllele(Marker marker) {
+    private static int bitsPerAllele(Marker marker) {
         int nAllelesM1 = marker.nAlleles() - 1;
         int nStorageBits = Integer.SIZE - Integer.numberOfLeadingZeros(nAllelesM1);
-        return (byte) nStorageBits;
+        return nStorageBits;
     }
 
-    /*
-     * Sets phase to unknown for all parent-offspring relationships, and sets
-     * all genotypes in a duo or trio genotypes to missing if a Mendelian
-     * inconsistency is found.
-     */
-    private static void removeMendelianInconsistencies(VcfRecord rec,
-            NuclearFamilies fam, BitSet isPhased, BitSet isMissing1,
-            BitSet isMissing2) {
-        for (int j=0, n=fam.nDuos(); j<n; ++j) {
-            int p = fam.duoParent(j);
-            int o = fam.duoOffspring(j);
-            isPhased.clear(p);
-            isPhased.clear(o);
-            if (duoIsConsistent(rec, p, o) == false) {
-                logDuoInconsistency(rec, p, o);
-                isMissing1.set(p);
-                isMissing2.set(p);
-                isMissing1.set(o);
-                isMissing2.set(o);
-            }
-        }
-        for (int j=0, n=fam.nTrios(); j<n; ++j) {
-            int f = fam.trioFather(j);
-            int m = fam.trioMother(j);
-            int o = fam.trioOffspring(j);
-            isPhased.clear(f);
-            isPhased.clear(m);
-            isPhased.clear(o);
-            if (trioIsConsistent(rec, f, m, o) == false) {
-                logTrioInconsistency(rec, f, m, o);
-                isMissing1.set(f);
-                isMissing2.set(f);
-                isMissing1.set(m);
-                isMissing2.set(m);
-                isMissing1.set(o);
-                isMissing2.set(o);
-            }
-        }
-    }
+//    /*
+//     * Sets phase to unknown for all parent-offspring relationships, and sets
+//     * all genotypes in a duo or trio genotypes to missing if a Mendelian
+//     * inconsistency is found.
+//     */
+//    private static void removeMendelianInconsistencies(VcfRecord rec,
+//            NuclearFamilies fam, BitSet isPhased, BitSet isMissing1,
+//            BitSet isMissing2) {
+//        for (int j=0, n=fam.nDuos(); j<n; ++j) {
+//            int p = fam.duoParent(j);
+//            int o = fam.duoOffspring(j);
+//            isPhased.clear(p);
+//            isPhased.clear(o);
+//            if (duoIsConsistent(rec, p, o) == false) {
+//                logDuoInconsistency(rec, p, o);
+//                isMissing1.set(p);
+//                isMissing2.set(p);
+//                isMissing1.set(o);
+//                isMissing2.set(o);
+//            }
+//        }
+//        for (int j=0, n=fam.nTrios(); j<n; ++j) {
+//            int f = fam.trioFather(j);
+//            int m = fam.trioMother(j);
+//            int o = fam.trioOffspring(j);
+//            isPhased.clear(f);
+//            isPhased.clear(m);
+//            isPhased.clear(o);
+//            if (trioIsConsistent(rec, f, m, o) == false) {
+//                logTrioInconsistency(rec, f, m, o);
+//                isMissing1.set(f);
+//                isMissing2.set(f);
+//                isMissing1.set(m);
+//                isMissing2.set(m);
+//                isMissing1.set(o);
+//                isMissing2.set(o);
+//            }
+//        }
+//    }
+//
+//    private static boolean duoIsConsistent(VcfRecord rec, int parent,
+//            int offspring) {
+//        int p1 = rec.gt(parent, 0);
+//        int p2 = rec.gt(parent, 1);
+//        int o1 = rec.gt(offspring, 0);
+//        int o2 = rec.gt(offspring, 1);
+//        boolean alleleMissing = (p1<0 || p2<0 || o1<0 || o2<0);
+//        return (alleleMissing || p1==o1 || p1==o2 || p2==o1 || p2==o2);
+//    }
+//
+//    private static boolean trioIsConsistent(VcfRecord rec, int father,
+//            int mother, int offspring) {
+//        int f1 = rec.gt(father, 0);
+//        int f2 = rec.gt(father, 1);
+//        int m1 = rec.gt(mother, 0);
+//        int m2 = rec.gt(mother, 1);
+//        int o1 = rec.gt(offspring, 0);
+//        int o2 = rec.gt(offspring, 1);
+//        boolean fo1 = (o1<0 || f1<0 || f2<0 || o1==f1 || o1==f2);
+//        boolean mo2 = (o2<0 || m1<0 || m2<0 || o2==m1 || o2==m2);
+//        if (fo1 && mo2) {
+//            return true;
+//        }
+//        else {
+//            boolean fo2 = (o2<0 || f1<0 || f2<0 || o2==f1 || o2==f2);
+//            boolean mo1 = (o1<0 || m1<0 || m2<0 || o1==m1 || o1==m2);
+//            return (fo2 && mo1);
+//        }
+//    }
+//
+//    private static void logDuoInconsistency(VcfRecord rec, int parent,
+//            int offspring) {
+//        StringBuilder sb = new StringBuilder(80);
+//        sb.append("WARNING: Inconsistent duo genotype set to missing");
+//        sb.append(Const.tab);
+//        sb.append(rec.marker());
+//        sb.append(Const.colon);
+//        sb.append(rec.samples().id(parent));
+//        sb.append(Const.tab);
+//        sb.append(rec.samples().id(offspring));
+//        main.Logger.getInstance().println(sb.toString());
+//    }
+//
+//    private static void logTrioInconsistency(VcfRecord rec, int father,
+//            int mother, int offspring) {
+//        StringBuilder sb = new StringBuilder(80);
+//        sb.append("WARNING: Inconsistent trio genotype set to missing");
+//        sb.append(Const.tab);
+//        sb.append(rec.marker());
+//        sb.append(Const.tab);
+//        sb.append(rec.samples().id(father));
+//        sb.append(Const.tab);
+//        sb.append(rec.samples().id(mother));
+//        sb.append(Const.tab);
+//        sb.append(rec.samples().id(offspring));
+//        main.Logger.getInstance().println(sb.toString());
+//    }
 
-    private static boolean duoIsConsistent(VcfRecord rec, int parent,
-            int offspring) {
-        byte p1 = rec.gt(parent, 0);
-        byte p2 = rec.gt(parent, 1);
-        byte o1 = rec.gt(offspring, 0);
-        byte o2 = rec.gt(offspring, 1);
-        boolean alleleMissing = (p1<0 || p2<0 || o1<0 || o2<0);
-        return (alleleMissing || p1==o1 || p1==o2 || p2==o1 || p2==o2);
-    }
-
-    private static boolean trioIsConsistent(VcfRecord rec, int father,
-            int mother, int offspring) {
-        byte f1 = rec.gt(father, 0);
-        byte f2 = rec.gt(father, 1);
-        byte m1 = rec.gt(mother, 0);
-        byte m2 = rec.gt(mother, 1);
-        byte o1 = rec.gt(offspring, 0);
-        byte o2 = rec.gt(offspring, 1);
-        boolean fo1 = (o1<0 || f1<0 || f2<0 || o1==f1 || o1==f2);
-        boolean mo2 = (o2<0 || m1<0 || m2<0 || o2==m1 || o2==m2);
-        if (fo1 && mo2) {
-            return true;
-        }
-        else {
-            boolean fo2 = (o2<0 || f1<0 || f2<0 || o2==f1 || o2==f2);
-            boolean mo1 = (o1<0 || m1<0 || m2<0 || o1==m1 || o1==m2);
-            return (fo2 && mo1);
-        }
-    }
-
-    private static void logDuoInconsistency(VcfRecord rec, int parent,
-            int offspring) {
-        StringBuilder sb = new StringBuilder(80);
-        sb.append("WARNING: Inconsistent duo genotype set to missing");
-        sb.append(Const.tab);
-        sb.append(rec.marker());
-        sb.append(Const.colon);
-        sb.append(rec.samples().id(parent));
-        sb.append(Const.tab);
-        sb.append(rec.samples().id(offspring));
-        main.Logger.getInstance().println(sb.toString());
-    }
-
-    private static void logTrioInconsistency(VcfRecord rec, int father,
-            int mother, int offspring) {
-        StringBuilder sb = new StringBuilder(80);
-        sb.append("WARNING: Inconsistent trio genotype set to missing");
-        sb.append(Const.tab);
-        sb.append(rec.marker());
-        sb.append(Const.tab);
-        sb.append(rec.samples().id(father));
-        sb.append(Const.tab);
-        sb.append(rec.samples().id(mother));
-        sb.append(Const.tab);
-        sb.append(rec.samples().id(offspring));
-        main.Logger.getInstance().println(sb.toString());
+    @Override
+    public int nSamples() {
+        return samples.nSamples();
     }
 
     @Override
@@ -287,7 +349,12 @@ public final class BitSetGT implements VcfEmission {
     }
 
     @Override
-    public int nSamples() {
+    public int nHaps() {
+        return 2*samples.nSamples();
+    }
+
+    @Override
+    public int nHapPairs() {
         return samples.nSamples();
     }
 
@@ -302,28 +369,28 @@ public final class BitSetGT implements VcfEmission {
     }
 
     @Override
-    public boolean isMissingData() {
-        int n = (isMissing1.cardinality() + isMissing2.cardinality());
-        return n==2*samples.nSamples();
-    }
-
-    @Override
     public boolean isPhased(int sample) {
         return isPhased.get(sample);
     }
 
     @Override
-    public byte allele1(int sample) {
+    public int allele1(int sample) {
         return isMissing1.get(sample) ? -1 : allele(allele1, sample);
     }
 
     @Override
-    public byte allele2(int sample) {
+    public int allele2(int sample) {
         return isMissing2.get(sample) ? -1 : allele(allele2, sample);
     }
 
     @Override
-    public float gl(int sample, byte a1, byte a2) {
+    public int allele(int hap) {
+        int sample = hap/2;
+        return (hap & 1) == 0 ? allele1(sample) : allele2(sample);
+    }
+
+    @Override
+    public float gl(int sample, int a1, int a2) {
         if ( a1 < 0 || a1 >= marker.nAlleles())  {
             String s = "invalid alleles: (" + a1 + "): " + marker;
             throw new IllegalArgumentException(s);
@@ -336,8 +403,8 @@ public final class BitSetGT implements VcfEmission {
             return 1.0f;
         }
         else if (isMissing1.get(sample) ^ isMissing2.get(sample)) {
-            byte obsA1 = allele1(sample);
-            byte obsA2 = allele2(sample);
+            int obsA1 = allele1(sample);
+            int obsA2 = allele2(sample);
             boolean consistent = (obsA1<0 || obsA1==a1) && (obsA2<0 || obsA2==a2);
             if (isPhased.get(sample)==false && consistent==false) {
                 consistent = (obsA1<0 || obsA1==a2) && (obsA2<0 || obsA2==a1);
@@ -345,8 +412,8 @@ public final class BitSetGT implements VcfEmission {
             return consistent ? 1.0f : 0.0f;
         }
         else {
-            byte obsA1 = allele(allele1, sample);
-            byte obsA2 = allele(allele2, sample);
+            int obsA1 = allele(allele1, sample);
+            int obsA2 = allele(allele2, sample);
             if (isPhased.get(sample)) {
                 return (obsA1==a1 && obsA2==a2) ? 1.0f : 0.0f;
             }
@@ -358,11 +425,11 @@ public final class BitSetGT implements VcfEmission {
         }
     }
 
-    private byte allele(BitSet bits, int sample) {
+    private int allele(BitSet bits, int sample) {
         int start = bitsPerAllele*sample;
         int end = start + bitsPerAllele;
-        byte allele = 0;
-        byte mask = 1;
+        int allele = 0;
+        int mask = 1;
         for (int j=start; j<end; ++j) {
             if (bits.get(j)) {
                 allele += mask;
@@ -372,30 +439,44 @@ public final class BitSetGT implements VcfEmission {
         return allele;
     }
 
+    @Override
+    public int nAlleles() {
+        return this.marker().nAlleles();
+    }
+
+    @Override
+    public boolean storesNonMajorIndices() {
+        return false;
+    }
+
+    @Override
+    public int majorAllele() {
+        String s = "this.storesNonMajorIndices()==false";
+        throw new UnsupportedOperationException(s);
+    }
+
+    @Override
+    public int alleleCount(int allele) {
+        String s = "this.storesNonMajorIndices()==false";
+        throw new UnsupportedOperationException(s);
+    }
+
+    @Override
+    public int hapIndex(int allele, int copy) {
+        String s = "this.storesNonMajorIndices()==false";
+        throw new UnsupportedOperationException(s);
+    }
+
     /**
      * Returns the data represented by {@code this} as a VCF
-     * record with a GT format field.
+     * record with a GT format field. The returned VCF record
+     * will have missing QUAL and INFO fields, will have "PASS"
+     * in the filter field, and will have a GT format field.
      * @return the data represented by {@code this} as a VCF
-     * record with a GT format field.
+     * record with a GT format field
      */
     @Override
     public String toString() {
-        StringBuilder sb = new StringBuilder();
-        sb.append(marker);
-        sb.append(Const.tab);
-        sb.append(Const.MISSING_DATA_CHAR);
-        sb.append(Const.tab);
-        sb.append("PASS");
-        sb.append(Const.tab);
-        sb.append(Const.MISSING_DATA_CHAR);
-        sb.append(Const.tab);
-        sb.append("GT");
-        for (int j=0, n=samples.nSamples(); j<n; ++j) {
-            sb.append(Const.tab);
-            sb.append(isMissing1.get(j) ? Const.MISSING_DATA_CHAR : allele(allele1, j));
-            sb.append(isPhased.get(j) ? Const.phasedSep : Const.unphasedSep);
-            sb.append(isMissing2.get(j) ? Const.MISSING_DATA_CHAR : allele(allele2, j));
-        }
-        return sb.toString();
+        return toVcfRec();
     }
 }

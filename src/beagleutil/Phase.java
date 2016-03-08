@@ -30,7 +30,7 @@ package beagleutil;
  * and ({@code b1}, {@code b2}), then
  * <br>
  * 1) the genotypes have IDENTICAL phase if a) alleles {@code a1}
- * and {@code b2} are equivalent, b) alleles {@code a2} and
+ * and {@code b1} are equivalent, b) alleles {@code a2} and
  * {@code b2} are equivalent, and c) either alleles {@code a1}
  * and {@code b2} are not equivalent or alleles
  * {@code a2} and {@code b1} are not equivalent.

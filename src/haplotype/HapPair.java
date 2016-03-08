@@ -18,6 +18,7 @@
  */
 package haplotype;
 
+import beagleutil.Samples;
 import vcf.Marker;
 import vcf.Markers;
 
@@ -34,46 +35,56 @@ public interface HapPair {
 
     /**
      * Returns the first allele for the specified marker.
-     * @param marker a marker index.
-     * @return the first allele for the specified marker.
+     * @param marker a marker index
+     * @return the first allele for the specified marker
      * @throws IndexOutOfBoundsException if
-     * {@code marker < 0 || marker >=this.nMarkers()}.
+     * {@code marker < 0 || marker >= this.nMarkers()}
      */
-    byte allele1(int marker);
+    int allele1(int marker);
 
     /**
      * Returns the second allele for the specified marker.
-     * @param marker a marker index.
-     * @return the second allele for the specified marker.
+     * @param marker a marker index
+     * @return the second allele for the specified marker
      * @throws IndexOutOfBoundsException if
-     * {@code marker< 0 || marker>=this.nMarkers()}.
-*/
-    byte allele2(int marker);
+     * {@code marker < 0 || marker >= this.nMarkers()}
+     */
+    int allele2(int marker);
 
     /**
      * Returns the markers.
-     * @return the markers.
+     * @return the markers
      */
     Markers markers();
 
     /**
      * Returns the specified marker.
-     * @param marker a marker index.
-     * @return the specified marker.
-     * {@code marker<0 || marker>=this.nMarkers()}.
+     * @param marker a marker index
+     * @return the specified marker
+     * @throws IndexOutOfBoundsException if
+     * {@code marker < 0 || marker >= this.nMarkers()}
      */
      Marker marker(int marker);
 
     /**
      * Returns the number of markers.
-     * @return the number of markers.
+     * @return the number of markers
      */
     int nMarkers();
 
     /**
-     * Returns the sample identifier index.
-     * @return the sample identifier index.
-     * @see beagleutil.SampleIds
+     * Returns the list of samples containing the sample associated with
+     * this haplotype pair.
+     * @return the list of samples containing the sample associated with
+     * this haplotype pair
      */
-    int idIndex();
+    Samples samples();
+
+    /**
+     * Returns the index of the sample associated with this haplotype pair
+     * in the list of samples returned by {@code this.samples()}.
+     * @return the index of the sample associated with this haplotype pair
+     * in the list of samples returned by {@code this.samples()}
+     */
+    int sampleIndex();
 }

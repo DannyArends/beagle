@@ -18,18 +18,22 @@
  */
 package haplotype;
 
-import blbutil.FileIterator;
+import vcf.HapsMarker;
+import blbutil.FileIt;
 import java.io.File;
 import java.util.NoSuchElementException;
 import vcf.Marker;
 
 /**
- * Class {@code HapsMarkerIterator} is an iterator whose
+ * <p>Class {@code HapsMarkerIterator} represents a file iterator whose
  * {@code next()} method returns {@code HapsMarker} objects.
+ * </p>
+ * <p>Instances of class {@code HapsMarkerIterator} are not thread-safe.
+ * </p>
  *
  * @author Brian L. Browning {@code <browning@uw.edu>}
  */
-public class HapsMarkerIterator implements FileIterator<HapsMarker> {
+public class HapsMarkerIterator implements FileIt<HapsMarker> {
 
     private final HapPairs haps;
     private int nextIndex = 0;
@@ -38,8 +42,8 @@ public class HapsMarkerIterator implements FileIterator<HapsMarker> {
      * Constructs a new {@code HapsMarkerIterator} instance that iterates
      * through the markers of the specified {@code HapPairs} object.
      *
-     * @param haps the haplotype pairs.
-     * @throws NullPointerException if {@code haps==null}.
+     * @param haps the haplotype pairs
+     * @throws NullPointerException if {@code haps == null}
      */
     public HapsMarkerIterator(HapPairs haps) {
         if (haps==null) {
@@ -61,8 +65,7 @@ public class HapsMarkerIterator implements FileIterator<HapsMarker> {
     /**
      * Returns {@code true} if the iteration has more elements, and returns
      * {@code false} otherwise.
-     * @return {@code true} if the iteration has more elements, and
-     * {@code false} otherwise.
+     * @return {@code true} if the iteration has more elements
      */
     @Override
     public boolean hasNext() {
@@ -71,25 +74,28 @@ public class HapsMarkerIterator implements FileIterator<HapsMarker> {
 
     /**
      * Returns the next element in the iteration.
-     * @return the next element in the iteration.
-     * @throws NoSuchElementException if the iteration has no more elements.
+     * @return the next element in the iteration
+     * @throws NoSuchElementException if the iteration has no more elements
      */
     @Override
     public HapsMarker next() {
+        if (hasNext() == false) {
+            throw new NoSuchElementException("hasNext()==false");
+        }
         final int index = nextIndex++;
         return new HapsMarker() {
             @Override
-            public byte allele(int haplotype) {
+            public int allele(int haplotype) {
                 return haps.allele(index, haplotype);
             }
 
             @Override
-            public byte allele1(int hapPair) {
+            public int allele1(int hapPair) {
                 return haps.allele(index, 2 * hapPair);
             }
 
             @Override
-            public byte allele2(int hapPair) {
+            public int allele2(int hapPair) {
                 return haps.allele(index, 2 * hapPair + 1);
             }
 
@@ -107,17 +113,12 @@ public class HapsMarkerIterator implements FileIterator<HapsMarker> {
             public int nHapPairs() {
                 return haps.nHapPairs();
             }
-
-            @Override
-            public int idIndex(int hapPair) {
-                return haps.idIndex(hapPair);
-            }
         };
     }
 
     /**
      * The {@code remove} method is not supported by this iterator.
-     * @throws UnsupportedOperationException if this method is invoked.
+     * @throws UnsupportedOperationException if this method is invoked
      */
     @Override
     public void remove() {

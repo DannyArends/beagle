@@ -19,23 +19,26 @@
 package sample;
 
 /**
- * Class {@code DuoNodes} stores ordered node trios and associated values.
+ * <p>Class {@code DuoNodes} stores ordered node trios and associated values.
+ * </p>
+ * <p>Instances of class {@code DuoNodes} are not thread safe.
+ * </p>
  *
  * @author Brian L. Browning {@code <browning@uw.edu>}
  */
 public class DuoNodes {
 
-    private static final double loadFactor = 0.75;
+    private static final float loadFactor = 0.75f;
 
     private int size;
-    private int maxSize; // required to be a power of 2.
+    private int capacity; // required to be a power of 2
     private int rehashThreshold;
 
     private int[] index;
     private int[] nodeAB1;
     private int[] nodeA2;
     private int[] nodeB2;
-    private double[] value;
+    private float[] value;
 
     /**
      * Creates a new instance of {@code DuoNodes} that has an
@@ -43,25 +46,25 @@ public class DuoNodes {
      */
     public DuoNodes() {
         this.size = 0;
-        this.maxSize = (1<<10);
-        this.rehashThreshold = (int) (loadFactor * maxSize);
-        this.index = new int[maxSize];
-        this.nodeAB1 = new int[maxSize];
-        this.nodeA2 = new int[maxSize];
-        this.nodeB2 = new int[maxSize];
-        this.value = new double[maxSize];
+        this.capacity = (1<<10);
+        this.rehashThreshold = (int) (loadFactor * capacity);
+        this.index = new int[capacity];
+        this.nodeAB1 = new int[capacity];
+        this.nodeA2 = new int[capacity];
+        this.nodeB2 = new int[capacity];
+        this.value = new float[capacity];
     }
 
-    private static int hash1(int nodeAB1, int nodeA2, int nodeB2) {
-        int hash = 5;
+    private static long hash1(int nodeAB1, int nodeA2, int nodeB2) {
+        long hash = 5;
         hash = 71 * hash + nodeAB1;
         hash = 71 * hash + nodeA2;
         hash = 71 * hash + nodeB2;
         return hash;
     }
 
-    private static int hash2(int nodeAB1, int nodeA2, int nodeB2) {
-        int hash = 7;
+    private static long hash2(int nodeAB1, int nodeA2, int nodeB2) {
+        long hash = 7;
         hash = 97 * hash + nodeAB1;
         hash = 97 * hash + nodeA2;
         hash = 97 * hash + nodeB2;
@@ -74,21 +77,20 @@ public class DuoNodes {
      * should be stored is returned.
      */
     private int index(int ab1, int a2, int b2) {
-        int h1 = hash1(ab1, a2, b2);
-        int h2 = hash2(ab1, a2, b2);
+        long h1 = hash1(ab1, a2, b2);
+        long h2 = hash2(ab1, a2, b2);
         if ((h2 & 1)==0) {
             // h2 must be relatively prime to maxSize, which is a power of 2
             ++h2;
         }
-        for (int k=0; k<maxSize; ++k) {
-            int i = (h1 + k*h2) % maxSize;
-            if (i<0) {
-                i = -i;
-            }
+        long l = h1;
+        for (int k=0; k<capacity; ++k) {
+            int i = (int) (l % capacity);
             if (value[i]==0.0 ||
                     (nodeAB1[i]==ab1 && nodeA2[i]==a2 && nodeB2[i]==b2)) {
                 return i;
             }
+            l += h2;
         }
         assert false;
         return -1;
@@ -99,139 +101,82 @@ public class DuoNodes {
      */
     private void rehash() {
         assert this.size>=this.rehashThreshold;
-        int newMaxSize = 2*maxSize;
+        int newMaxSize = 2*capacity;
         if (newMaxSize<0) {
             throw new IllegalStateException("hash table overflow");
         }
-        int[] oldIndices = index;
+        int[] oldIndex = index;
         int[] oldNodeAB1 = nodeAB1;
         int[] oldNodeA2 = nodeA2;
         int[] oldNodeB2 = nodeB2;
-        double[] oldValue = value;
+        float[] oldValue = value;
 
-        maxSize = newMaxSize;
+        capacity = newMaxSize;
         index = new int[newMaxSize];
         nodeAB1 = new int[newMaxSize];
         nodeA2 = new int[newMaxSize];
         nodeB2 = new int[newMaxSize];
-        value = new double[newMaxSize];
+        value = new float[newMaxSize];
 
         for (int j=0; j<size; ++j) {
-            int oldIndex = oldIndices[j];
-            int newIndex = index(oldNodeAB1[oldIndex], oldNodeA2[oldIndex], oldNodeB2[oldIndex]);
+            int oldInd = oldIndex[j];
+            int newIndex = index(oldNodeAB1[oldInd], oldNodeA2[oldInd],
+                    oldNodeB2[oldInd]);
             index[j] = newIndex;
-            nodeAB1[newIndex] = oldNodeAB1[oldIndex];
-            nodeA2[newIndex] = oldNodeA2[oldIndex];
-            nodeB2[newIndex] = oldNodeB2[oldIndex];
-            value[newIndex] = oldValue[oldIndex];
+            nodeAB1[newIndex] = oldNodeAB1[oldInd];
+            nodeA2[newIndex] = oldNodeA2[oldInd];
+            nodeB2[newIndex] = oldNodeB2[oldInd];
+            value[newIndex] = oldValue[oldInd];
         }
-        rehashThreshold = (int) (loadFactor * maxSize);
-    }
-
-    /**
-     * Sets the value of the specified node trio to the maximum
-     * of the node trio value immediately prior to method invocation
-     * and the specified value.
-     *
-     * @param nodeAB1 the first node.
-     * @param nodeA2 the second node.
-     * @param nodeB2 the third node.
-     * @param value the value.
-     *
-     * @throws IllegalArgumentException if
-     * {@code value<0.0 || Double.isNaN(value)}
-     */
-    public void maxUpdate(int nodeAB1, int nodeA2, int nodeB2, double value) {
-        if (value>0.0) {
-            int i = index(nodeAB1, nodeA2, nodeB2);
-            if (this.value[i]>0.0) {
-                if (value>this.value[i]) {
-                    this.value[i] = value;
-                }
-            }
-            else {
-                this.index[size++] = i;
-                this.nodeAB1[i] = nodeAB1;
-                this.nodeA2[i] = nodeA2;
-                this.nodeB2[i] = nodeB2;
-                this.value[i] = value;
-                if (this.size>=this.rehashThreshold) {
-                    rehash();
-                }
-            }
-        }
-        else if (value>=0.0==false) {
-            throw new IllegalArgumentException(String.valueOf(value));
-        }
+        rehashThreshold = (int) (loadFactor * capacity);
     }
 
     /**
      * Adds the specified value to the stored value of the specified
      * node trio.
      *
-     * @param nodeAB1 the first node.
-     * @param nodeA2 the second node.
-     * @param nodeB2 the third node.
-     * @param value the value.
+     * @param nodeAB1 the first node
+     * @param nodeA2 the second node
+     * @param nodeB2 the third node
+     * @param value the value
      *
      * @throws IllegalArgumentException if
-     * {@code value<0.0 || Double.isNaN(value)}
+     * {@code (nodeAB1 < 0 || nodeA2 < 0 || nodeB2 < 0)}
+     * @throws IllegalArgumentException if
+     * {@code value <= 0 || (Double.isFinite(value) == false)}
      */
-    public void sumUpdate(int nodeAB1, int nodeA2, int nodeB2, double value) {
+    public void sumUpdate(int nodeAB1, int nodeA2, int nodeB2, float value) {
+        if (nodeAB1 < 0) {
+            throw new IllegalArgumentException(String.valueOf(nodeAB1));
+        }
+        if (nodeA2 < 0) {
+            throw new IllegalArgumentException(String.valueOf(nodeA2));
+        }
+        if (nodeB2 < 0) {
+            throw new IllegalArgumentException(String.valueOf(nodeB2));
+        }
+        if (value <= 0 || (Double.isFinite(value)==false) ) {
+            throw new IllegalArgumentException(String.valueOf(value));
+        }
         if (value>0.0) {
             int i = index(nodeAB1, nodeA2, nodeB2);
-            if (this.value[i]>0.0) {
-                this.value[i] += value;
-            }
-            else {
+            boolean addNode = (this.value[i]==0f);
+            this.value[i] += value;
+            if (addNode) {
                 this.index[size++] = i;
                 this.nodeAB1[i] = nodeAB1;
                 this.nodeA2[i] = nodeA2;
                 this.nodeB2[i] = nodeB2;
-                this.value[i] += value;
                 if (this.size>=this.rehashThreshold) {
                     rehash();
                 }
             }
         }
-        else if (value>=0.0==false) {
-            throw new IllegalArgumentException(String.valueOf(value));
-        }
-    }
-
-    /**
-     * Finds the maximum value of a node trio and removes any
-     * node trio with value less than the product of the
-     * maximum value divided by the maximum ratio.
-     * @param maxRatio the maximum ratio of two non-zero node trio values.
-     * @throws IllegalArgumentException if {@code maxRatio<=0}
-     */
-    public void trim(double maxRatio) {
-        if (maxRatio<=0 || Double.isNaN(maxRatio)) {
-            throw new IllegalArgumentException(String.valueOf(maxRatio));
-        }
-        double maxValue = 0.0;
-        for (int j=0; j<size; ++j) {
-            if (value[index[j]] > maxValue)  {
-                maxValue = value[index[j]];
-            }
-        }
-        double threshold = maxValue / maxRatio;
-        int newSize = 0;
-        for (int j=0; j<size; ++j) {
-            if (value[index[j]]<threshold) {
-                value[index[j]] = 0.0;
-            }
-            else {
-                index[newSize++] = index[j];
-            }
-        }
-        size = newSize;
     }
 
     /**
      * Returns the number of node trios with non-zero value.
-     * @return the number of node trios with non-zero value.
+     * @return the number of node trios with non-zero value
      */
     public int size() {
         return size;
@@ -244,15 +189,21 @@ public class DuoNodes {
     }
 
     /**
-     * Returns the first node of the specified node trio in the list of
-     * node trios with non-zero value.
+     * Returns the first node of the specified node trio in a list of
+     * node trios with non-zero value. Repeated invocations of this
+     * method with the same parameter will return the same value if
+     * node values are not modified between invocations. If
+     * {@code (index >= 0 && index < this.size())}, then the following
+     * expression will always evaluate to {@code true}:<br>
+     * {@code (this.value(this.enumNodeAB1(index), this.enumNodeA2(index),
+     * this.enumNodeB2(index)) == this.enumValue(index))}.
      *
-     * @param index an index in the list of node trios with non-zero value.
-     * @return the first node of the specified node trio in the list of
-     * node trios with non-zero value.
+     * @param index an index in a list of node trios with non-zero value.
+     * @return the first node of the specified node trio in a list of
+     * node trios with non-zero value
      *
      * @throws IndexOutOfBoundsException if
-     * {@code index<0 || index>=this.size()}
+     * {@code index < 0 || index >= this.size()}
      */
     public int enumNodeAB1(int index) {
         checkSize(index);
@@ -260,15 +211,21 @@ public class DuoNodes {
     }
 
     /**
-     * Returns the second node of the specified node trio in the list of
-     * node trios with non-zero value.
+     * Returns the second node of the specified node trio in a list of
+     * node trios with non-zero value. Repeated invocations of this
+     * method with the same parameter will return the same value if
+     * node values are not modified between invocations. If
+     * {@code (index >= 0 && index < this.size())}, then the following
+     * expression will always evaluate to {@code true}:<br>
+     * {@code (this.value(this.enumNodeAB1(index), this.enumNodeA2(index),
+     * this.enumNodeB2(index)) == this.enumValue(index))}.
      *
-     * @param index an index in the list of node trios with non-zero value.
-     * @return the second node of the specified node trio in the list of
-     * node trios with non-zero value.
+     * @param index an index in a list of node trios with non-zero value
+     * @return the second node of the specified node trio in a list of
+     * node trios with non-zero value
      *
      * @throws IndexOutOfBoundsException if
-     * {@code index<0 || index>=this.size()}
+     * {@code index < 0 || index >= this.size()}
      */
     public int enumNodeA2(int index) {
         checkSize(index);
@@ -276,15 +233,21 @@ public class DuoNodes {
     }
 
     /**
-     * Returns the third node of the specified node trio in the list of
-     * node trios with non-zero value.
+     * Returns the third node of the specified node trio in a list of
+     * node trios with non-zero value. Repeated invocations of this
+     * method with the same parameter will return the same value if
+     * node values are not modified between invocations. If
+     * {@code (index >= 0 && index < this.size())}, then the following
+     * expression will always evaluate to {@code true}:<br>
+     * {@code (this.value(this.enumNodeAB1(index), this.enumNodeA2(index),
+     * this.enumNodeB2(index)) == this.enumValue(index))}.
      *
-     * @param index an index in the list of node trios with non-zero value.
-     * @return the third node of the specified node trio in the list of
-     * node trios with non-zero value.
+     * @param index an index in a list of node trios with non-zero value
+     * @return the third node of the specified node trio in a list of
+     * node trios with non-zero value
      *
      * @throws IndexOutOfBoundsException if
-     * {@code index<0 || index>=this.size()}
+     * {@code index < 0 || index >= this.size()}
      */
     public int enumNodeB2(int index) {
         checkSize(index);
@@ -292,17 +255,23 @@ public class DuoNodes {
     }
 
     /**
-     * Returns the value of the specified ordered node trio in the list of
-     * node trios with non-zero value.
+     * Returns the value of the specified ordered node trio in a list of
+     * node trios with non-zero value. Repeated invocations of this
+     * method with the same parameter will return the same value if
+     * node values are not modified between invocations. If
+     * {@code (index >= 0 && index < this.size())}, then the following
+     * expression will always evaluate to {@code true}:<br>
+     * {@code (this.value(this.enumNodeAB1(index), this.enumNodeA2(index),
+     * this.enumNodeB2(index)) == this.enumValue(index))}.
      *
-     * @param index an index in the list of node trios with non-zero value.
-     * @return the value of the specified ordered node trio in the list of
-     * node trios with non-zero value.
+     * @param index an index in a list of node trios with non-zero value
+     * @return the value of the specified ordered node trio in a list of
+     * node trios with non-zero value
      *
      * @throws IndexOutOfBoundsException if
-     * {@code index<0 || index>=this.size()}
+     * {@code index < 0 || index >= this.size()}
      */
-    public double enumValue(int index) {
+    public float enumValue(int index) {
         checkSize(index);
         return value[this.index[index]];
     }
@@ -310,21 +279,32 @@ public class DuoNodes {
     /**
      * Returns the specified node trio value.
      *
-     * @param nodeAB1 the first node.
-     * @param nodeA2 the second node.
-     * @param nodeB2 the third node.
-     * @return the specified node trio value.
+     * @param nodeAB1 the first node
+     * @param nodeA2 the second node
+     * @param nodeB2 the third node
+     * @return the specified node trio value
+     * @throws IllegalArgumentException if
+     * {@code (nodeAB1 < 0 || nodeA2 < 0 || nodeB2 < 0)}
      */
-    public double value(int nodeAB1, int nodeA2, int nodeB2) {
+    public float value(int nodeAB1, int nodeA2, int nodeB2) {
+        if (nodeAB1 < 0) {
+            throw new IllegalArgumentException(String.valueOf(nodeAB1));
+        }
+        if (nodeA2 < 0) {
+            throw new IllegalArgumentException(String.valueOf(nodeA2));
+        }
+        if (nodeB2 < 0) {
+            throw new IllegalArgumentException(String.valueOf(nodeB2));
+        }
         return value[index(nodeAB1, nodeA2, nodeB2)];
     }
 
     /**
-     * Sets the value of each node trio to 0.0.
+     * Sets the value of each node trio to 0.
      */
     public void clear() {
         for (int j=0; j<this.size; ++j) {
-            value[index[j]] = 0.0;
+            value[index[j]] = 0f;
         }
         size = 0;
     }
@@ -344,11 +324,11 @@ public class DuoNodes {
             sb.append(" (");
             sb.append(j);
             sb.append(": nodeAB1=");
-            sb.append((int) enumNodeAB1(j));
+            sb.append(enumNodeAB1(j));
             sb.append(" nodeA2=");
             sb.append((int) enumNodeA2(j));
             sb.append(" nodeB2=");
-            sb.append((int) enumNodeB2(j));
+            sb.append(enumNodeB2(j));
             sb.append(" value=");
             sb.append(enumValue(j));
             sb.append(") ");

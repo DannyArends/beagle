@@ -20,146 +20,164 @@ package vcf;
 
 import beagleutil.Samples;
 import haplotype.HapPair;
+import haplotype.SampleHapPairs;
+import java.io.Closeable;
 import java.util.List;
 
 /**
- * Interface {@code Data} represents a sliding marker window
- * for reference sample data and non-reference sample data.
+ * Interface {@code Data} represents a sliding window of target VCF records
+ * or a sliding window of reference and target VCF records.
  *
  * @author Brian L. Browning {@code <browning@uw.edu>}
  */
-public interface Data {
+public interface Data extends Closeable {
 
     /**
-     * Returns {@code true} if the sliding marker window is the last
-     * marker window for the chromosome and returns {@code false}
-     * otherwise.
-     * @return {@code true} if the sliding marker window is the last
-     * marker window for the chromosome and {@code false} otherwise.
+     * Returns {@code true} if the current window of VCF records is the last
+     * window for the chromosome and returns {@code false} otherwise.
+     * @return {@code true} if the current window of VCF records is the last
+     *window for the chromosome
      */
     public boolean lastWindowOnChrom();
 
     /**
-     * Returns {@code true} if the sliding marker window can advance
+     * Returns {@code true} if the sliding window of VCF records can advance
      * and returns {@code false} otherwise.
-     * @return {@code true} if the sliding marker window can advance
-     * and returns {@code false} otherwise.
+     * @return {@code true} if the sliding window of VCF records can advance
      */
     boolean canAdvanceWindow();
 
     /**
-     * Advances the sliding marker window.
+     * Advances the sliding window of VCF records, and returns the advanced
+     * window.  The size of the advanced window and the number of markers
+     * of overlap between the marker window immediately before method
+     * invocation and the marker window immediately after method invocation
+     * may differ from the requested values.  If the advanced window size or
+     * overlap is less than the requested value, the actual value will be
+     * as large as possible. If {@code this.lastWindowOnChrom() == true}
+     * before method invocation, then there will be no overlap between the
+     * windows.
      *
-     * @param overlap the requested number of markers of overlap between the
-     * marker window immediately before the method invocation and the
-     * marker window immediately after the method returns.
-     * If the marker window immediately before method invocation contains
-     * the last markers on a chromosome, then there will be 0 markers
-     * in the overlap.
+     * @param overlap the requested number of markers of overlap
      * @param windowSize the requested number of the markers in the window
-     * immediately after the method returns.
+     * immediately after the method returns
      *
      * @throws IllegalArgumentException if a format error in the input data
-     * is encountered.
+     * is detected
      * @throws IllegalArgumentException if
-     * {@code overlap<0 || overlap>=windowSize}.
+     * {@code overlap < 0 || overlap >= windowSize}
      * @throws IllegalStateException if
-     * {@code this.canAdvanceWindow()==false}.
+     * {@code this.canAdvanceWindow() == false}
      */
     void advanceWindow(int overlap, int windowSize);
 
     /**
-     * Returns the window index.  The window index is the number of previous
-     * invocations of the {@code advanceWindow()} method.
+     * Returns the current window index. The window index
+     * is the number of previous invocations of the {@code advanceWindow()}
+     * method.
      * @return the window index
      */
     public int window();
 
-    /**
-     * Returns the number of markers overlap between the current marker window
-     * and the previous marker window.  Returns 0 if the current marker window
-     * is the first marker window.
+     /**
+     * Returns the number of target data markers in the overlap between
+     * the current marker window and the previous marker window.
+     * Returns 0 if the current marker window is the first marker window.
      *
-     * @return the number of markers overlap between the current marker window
-     * and the previous marker window.
+     * @return the number of target data markers in the overlap between
+     * the current marker window and the previous marker window
+     */
+    int targetOverlap();
+
+    /**
+     * Returns the number of VCF records in the overlap between the current
+     * window and the previous window.  Returns 0 if the current window
+     * is the first window.
+     *
+     * @return the number of VCF records in the overlap between the current
+     * window and the previous window
      */
     public int overlap();
 
      /**
-     * Returns the number of markers in the non-reference data
-     * in the overlap between the current marker window and the previous
-     * marker window.  Returns 0 if the current marker window is the first
-     * marker window.
-     *
-     * @return the number of markers in the non-reference data
-     * in the overlap between the current marker window and the previous
-     * marker window.
+     * Returns the number of target data markers in the current window.
+     * @return the number of target data markers in the current window
      */
-    int nonRefOverlap();
+    int nTargetMarkers();
 
     /**
-     * Returns the number of markers in the union of the current marker window
-     * and all previous marker windows.
-     * @return the number of markers in the union of the current marker window
-     * and all previous marker windows.
+     * Returns the number of target VCF records in the union of the
+     * current window and all previous windows.
+     * @return the number of target VCF records in the union of the
+     * current window and all previous windows
      */
-    int cumMarkerCnt();
+    int nTargetMarkersSoFar();
 
     /**
-     * Returns the list of markers in the current marker window.
-     * @return the list of markers in the current marker window.
+     * Returns the list of target data markers in the current window.
+     * @return the list of target data markers in the current window
      */
-     Markers markers();
+    Markers targetMarkers();
 
     /**
-     * Returns the list of markers with non-reference data in the current
-     * marker window.
-     * @return the list of markers with non-reference data in the current
-     * marker window.
-     */
-    Markers nonRefMarkers();
-
-    /**
-     * Returns the number of markers in the current marker window.
-     * @return the number of markers in the current marker window.
+     * Returns the number of markers in the current window.
+     * @return the number of markers in the current window
      */
      int nMarkers();
 
-     /**
-     * Returns the number of markers with non-reference data in
-     * the current marker window.
-     * @return the number of markers with non-reference data in
-     * the current marker window.
+    /**
+     * Returns the number of markers in the union of the current window
+     * and all previous windows.
+     * @return the number of markers in the union of the current window
+     * and all previous windows
      */
-    int nNonRefMarkers();
+    int nMarkersSoFar();
+
+    /**
+     * Returns the list of markers in the current window.
+     * @return the list of markers in the current window
+     */
+     Markers markers();
+
+     /**
+      * Returns the target data marker index corresponding to the specified
+      * marker, or returns -1 if no corresponding  target data marker exists.
+      * Indices are with respect to the current window.
+      * @param marker a marker index
+      * @return the target data marker index corresponding to the specified
+      * marker, or returns -1 if no corresponding  target data marker exists
+      * @throws IndexOutOfBoundsException if
+      * {@code marker < 0 || marker >= this.nMarkers()}
+      */
+     int targetMarkerIndex(int marker);
 
      /**
       * Returns the marker index corresponding to the
-      * specified marker in the non-reference data.  Indices are with
-      * respect to the current marker window.
-      * @param nonRefMarker index of a marker in the non-reference data.
-      * @return the marker index corresponding to
-      * the specified marker in the non-reference data.
+      * specified target data marker.  Indices are with
+      * respect to the current window.
+      * @param targetMarker a target data marker index
+      * @return the marker index corresponding to the specified
+      * target data marker
       * @throws IndexOutOfBoundsException if
-      * {@code nonRefIndex<0 || nonRefIndex>=this.nNonRefMarkers()}.
+      * {@code targetMarker < 0 || targetMarker >= this.nTargetMarkers()}
       */
-     int markerIndex(int nonRefMarker);
+     int markerIndex(int targetMarker);
 
-     /**
-      * Returns the marker index in the non-reference data corresponding to
-      * the specified marker, or returns -1 if no corresponding marker exists.
-      * Indices are with respect to the current marker window.
-      * @param refMarker index of a marker in the reference data.
-      * @return the marker index in the non-reference data corresponding to
-      * the specified marker, or returns -1 if no corresponding marker exists.
-      * @throws IndexOutOfBoundsException if
-      * {@code refIndex<0 || refIndex>=this.nRefMarkers()}.
-      */
-     int nonRefMarkerIndex(int refMarker);
+    /**
+     * Returns the number of target samples.
+     * @return the number of target samples
+     */
+    int nTargetSamples();
+
+    /**
+     * Returns the list of target samples.
+     * @return the list of target samples
+     */
+    Samples targetSamples();
 
     /**
      * Returns the number of reference samples.
-     * @return the number of reference samples.
+     * @return the number of reference samples
      */
     int nRefSamples();
 
@@ -167,57 +185,65 @@ public interface Data {
      * Returns the list of reference samples, or {@code null} if
      * there are no reference samples.
      * @return the list of reference samples, or {@code null} if
-     * there are no reference samples.
+     * there are no reference samples
      */
     Samples refSamples();
 
-    /**
-     * Returns the number of non-reference samples.
-     * @return the number of non-reference samples.
-     */
-    int nNonRefSamples();
+     /**
+      * Returns the total number of reference and target samples.
+      * @return the total number of reference and target samples
+      */
+     int nAllSamples();
+
+     /**
+      * Returns a list of all target and reference samples.
+      * Target samples are listed first in the same order as the list returned
+      * by {@code this.targetSamples()}. Reference samples are listed last
+      * in the same order as the list returned by {@code this.refSamples()}.
+      * @return a list of all target and reference samples
+      */
+     Samples allSamples();
 
     /**
-     * Returns the list of non-reference samples.
-     * @return the list of non-reference samples.
+     * Returns the genotype likelihoods for the target samples
+     * restricted to the target data markers in the current window.
+     * The returned {@code GL} instance will contain no markers if
+     * {@code this.advanceWindow()} has not yet been invoked.
+     * @return the genotype likelihoods for the target samples
+     * restricted to the target data markers in the current window
      */
-    Samples nonRefSamples();
-
-    /**
-     * Returns the emission probabilities for the reference samples,
-     * or returns {@code null} if there are no reference samples.
-     * @return the emission probabilities for the reference samples,
-     * or returns {@code null} if there are no reference samples.
-     */
-    GL refEmissions();
-
-    /**
-     * Returns the genotype emission probabilities for the
-     * non-reference samples at the markers in the non-reference data.
-     * @return the genotype emission probabilities for the
-     * non-reference samples at the markers in the non-reference data.
-     */
-    GL nonRefEmissions();
+    GL targetGL();
 
     /**
      * Returns a list of reference haplotype pairs that are restricted
-     * to the markers with non-reference data.  The returned list will
-     * be empty if there are no reference samples.
+     * to the target data markers in the current window.
+     * The returned list will be empty if there are no reference samples
+     * or if {@code this.advanceWindow()} has not yet been invoked.
      * @return a list of reference haplotype pairs that are restricted
-     * to the markers with the non-reference data.
+     * to the target data markers
      */
-    List<HapPair> restrictedRefHaps();
+    List<HapPair> restrictedRefHapPairs();
 
     /**
-     * Returns a list of reference haplotype pairs.  The returned list will
-     * be empty if there are no reference samples.
-     * @return a list of reference haplotype pairs.
+     * Returns a list of the reference haplotype pairs for the current
+     * window.  The returned list will be empty if there are no reference
+     * samples or if {@code this.advanceWindow()} has not yet been invoked.
+     * @return a list of the reference haplotype pairs
      */
-    List<HapPair> refHaps();
+    List<HapPair> refHapPairs();
 
     /**
-     * Closes any I/O resources controlled by this
-     * {@code Data} object.
+     * Returns the reference haplotype pairs for the current
+     * window.  Returns {@code null} if there are no reference samples or if
+     * {@code this.advanceWindow()} has not yet been invoked.
+     * @return the reference haplotype pairs or {@code null} if there
+     * are no reference haplotype pairs
      */
+    SampleHapPairs refSampleHapPairs();
+
+    /**
+     * Releases any I/O resources controlled by this object.
+     */
+    @Override
     void close();
 }

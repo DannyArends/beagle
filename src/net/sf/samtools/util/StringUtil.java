@@ -35,17 +35,16 @@ public class StringUtil {
     private static final byte UPPER_CASE_OFFSET = 'A' - 'a';
 
     /**
+     * @param <T> the type parameter
      * @param separator String to interject between each string in strings arg
      * @param objs List of objs to be joined
      * @return String that concatenates the result of each item's to String method for all items in objs, with separator between each of them.
      */
     public static <T> String join(final String separator, final Collection<T> objs) {
-        if (objs.size() == 0) {
+        if (objs.isEmpty()) {
             return "";
         }
-
         boolean notFirst = false;
-
         final StringBuilder ret = new StringBuilder();
         for (final Object obj : objs) {
             if(notFirst) {

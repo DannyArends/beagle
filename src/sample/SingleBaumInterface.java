@@ -24,8 +24,9 @@ import java.util.List;
 import vcf.GL;
 
 /**
- * Interface {@code SingleBaumInterface} has methods for sampling
+ * <p>Interface {@code SingleBaumInterface} has methods for sampling
  * haplotype pairs.
+ * </p>
  *
  * @author Brian L. Browning {@code <browning@uw.edu>}
  */
@@ -35,13 +36,13 @@ public interface SingleBaumInterface {
      * Returns the directed acyclic graph that determines the transition
      * probabilities.
      * @return the directed acyclic graph that determines the transition
-     * probabilities.
+     * probabilities
      */
     Dag dag();
 
     /**
      * Returns the emission probabilities.
-     * @return the emission probabilities.
+     * @return the emission probabilities
      */
     GL gl();
 
@@ -49,59 +50,59 @@ public interface SingleBaumInterface {
      * Returns the number of haplotype pairs that are sampled for each
      * individual.
      * @return the number of haplotype pairs that are sampled for each
-     * individual.
+     * individual
      */
-    int nCopies();
+    int nSamplesPerIndividual();
 
     /**
      * Returns the initial random seed.
-     * @return the initial random seed.
+     * @return the initial random seed
      */
     long seed();
 
     /**
-     * <p>Returns a list of {@code this.nCopies()} sampled haplotype pairs for the
-     * specified individual. Haplotype pairs are sampled conditional on the
-     * HMM with transition probabilities determined by {@code this.dag()} and
-     * emission probabilities determined by {@code this.gl()}.
+     * <p>Returns a list of {@code this.nSamplesPerIndividual()} sampled
+     * haplotype pairs for the specified individual. Haplotype pairs are
+     * sampled conditional on the HMM with transition probabilities
+     * determined by {@code this.dag()} and emission probabilities
+     * determined by {@code this.gl()}.
      * </p>
-     * The contract for this method is unspecified if no haplotype pair
+     * <p>The contract for this method is unspecified if no haplotype pair
      * is consistent with the HMM.
-     *
-     * @param sample a sample index.
-     * @return a list of {@code this.nCopies()} sampled haplotype pairs for the
-     * specified individual.
+     * </p>
+     * @param sample a sample index
+     * @return a list of {@code this.nSamplesPerIndividual()} sampled
+     * haplotype pairs for the specified individual
      *
      * @throws IndexOutOfBoundsException if
-     * {@code sample<0 || sample>=this.gl().nSamples()}
+     * {@code sample < 0 || sample >= this.gl().nSamples()}
      */
     List<HapPair> randomSample(int sample);
 
     /**
-     * <p>Returns a list of {@code this.nCopies()} sampled haplotype pairs for the
-     * specified individual. Haplotype pairs are sampled conditional on the
-     * HMM with transition probabilities determined by {@code this.dag()} and
-     * emission probabilities determined by {@code this.gl()}.
-     * Posterior genotype probabilities  are written to the specified array.
-     * The posterior probability of the {@code j}-th genotype for
-     * the {@code k}-th marker is stored at index
-     * {@code gl.markers().sumGenotypes(k) + j} in the {@code gtProbs}
-     * array.
+     * <p>Returns a list of {@code this.nSamplesPerIndividual()} sampled
+     * haplotype pairs for the specified individual. Haplotype pairs are
+     * sampled conditional on the HMM with transition probabilities determined
+     * by {@code this.dag()} and emission probabilities determined by
+     * {@code this.gl()}. Posterior genotype probabilities are written to
+     * the specified array. The posterior probability of the {@code j}-th
+     * genotype for the {@code k}-th marker is stored at index
+     * {@code gl.markers().sumGenotypes(k) + j} in the {@code gtProbs} array.
      * </p>
-     * The contract for this method is unspecified if no haplotype pair
+     * <p>The contract for this method is unspecified if no haplotype pair
      * is consistent with the HMM.
-     *
-     * @param sample the sample index.
+     * </p>
+     * @param sample the sample index
      * @param gtProbs a array to which posterior genotype probabilities
-     * for the sample will be written.
-     * @return a list of {@code this.nCopies()} sampled haplotype pairs for the
-     * specified individual.
+     * for the sample will be written
+     * @return a list of {@code this.nSamplesPerIndividual()} sampled
+     * haplotype pairs for the specified individual
      *
      * @throws IndexOutOfBoundsException if
-     * {@code sample<0 || sample>=this.gl().nSamples()}
+     * {@code sample < 0 || sample >= this.gl().nSamples()}
      * @throws IllegalArgumentException if
-     * {@code gtProbs.length!=this.gl().markers().sumGenotypes()}.
-     * @throws NullPointerException if {@code gtProbs==null}.
+     * {@code gtProbs.length != this.gl().markers().sumGenotypes()}
+     * @throws NullPointerException if {@code gtProbs == null}
      */
     List<HapPair> randomSample(int sample, double[] gtProbs);
 }

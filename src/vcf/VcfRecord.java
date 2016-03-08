@@ -35,37 +35,37 @@ import java.util.Map;
  *
  * @author Brian L. Browning {@code <browning@uw.edu>}
  */
-public class VcfRecord {
+public final class VcfRecord implements VcfEmission {
 
-    private final String vcfRecord;
+    /**
+     * The VCF FORMAT code for log-scaled genotype likelihood data: "GL".
+     */
+    public static final String GL_FORMAT = "GL";
+
+    /**
+     * The VCF FORMAT code for phred-scaled genotype likelihood data: "PL".
+     */
+    public static final String PL_FORMAT = "PL";
+
+    private static final int sampleOffset = 9;
+
     private final VcfHeader vcfHeader;
+    private final String vcfRecord;
+    private final int[] delimiters;
     private final Marker marker;
-    private final String qual;
-    private final String filter;
-    private final String info;
-    private final String format;
-    private final String[] sampleData;
-
-    private final double qualityScore;
-
-    private final String[] failedFilters;
-    private final boolean filtersApplied;
-    private final String[] infoFields;
 
     private final String[] formatFields;
-    private final String[][] sampleFormatFields;
-    private final boolean hasGTFormat;
-    private final byte[][] alleles;
-    private final boolean[] isPhased;
-
     private final Map<String, Integer> formatMap;
+
+    private final VcfEmission gtEm;
+    private final float[] gls;
 
     /**
      * Returns the VCF genotype index for the specified pair of alleles.
-     * @param a1 the first allele.
-     * @param a2 the second allele.
-     * @return the VCF genotype index for the specified pair of alleles.
-     * @throws IllegalArgumentException if {@code a1<0 || a2<0}.
+     * @param a1 the first allele
+     * @param a2 the second allele
+     * @return the VCF genotype index for the specified pair of alleles
+     * @throws IllegalArgumentException if {@code a1 < 0 || a2 < 0}
      */
     public static int gtIndex(int a1, int a2) {
         if (a1 < 0) {
@@ -80,62 +80,145 @@ public class VcfRecord {
         }
     }
 
-    /**
-     * Creates a new {@code VcfRecord} instance.
-     *
-     * @param vcfRecord a VCF version 4.1 record.
-     * @param vcfHeader meta-information lines and header line for the
-     * specified VCF record.
-     *
-     * @throws IllegalArgumentException if format error is
-     * detected in any fixed field or in any non-excluded sample field.
-     * @throws IllegalArgumentException if there are not
-     * {@code vcfHeader.nHeaderFields()} tab-delimited fields in the
-     * specified VCF record.
-     * @throws NullPointerException if
-     * {@code vcfRecord==null || vcfHeader==null}.
-     */
-    public VcfRecord(String vcfRecord, VcfHeader vcfHeader) {
-        this.vcfRecord = vcfRecord;
-        if (vcfHeader==null) {
-            throw new NullPointerException("vcfHeader==null");
-        }
-        String[] fields = getAndCheckFields(vcfHeader, vcfRecord);
+    private VcfRecord(VcfHeader vcfHeader, String vcfRecord, boolean useGT,
+            boolean useGL, float maxLR) {
         this.vcfHeader = vcfHeader;
-        this.marker = new Marker(vcfRecord);
-        this.qualityScore = fromPhred(quality(fields[5]));
-        this.qual = fields[5];
-        this.filter = fields[6];
-        this.info = fields[7];
-        this.format = (fields.length > 8) ? fields[8] : "";
-        this.filtersApplied = fields[6].equals(Const.MISSING_DATA_STRING)==false;
-        this.failedFilters = failedFilters(fields[6]);
-        this.infoFields = StringUtil.getFields(fields[7], Const.semicolon);
-        this.formatFields = fields.length > 8 ? formats(fields[8]) : new String[0];
+        this.vcfRecord = vcfRecord;
+        this.delimiters = delimiters(vcfHeader, vcfRecord);
+        this.marker = new BasicMarker(vcfRecord);
+        this.formatFields = formats(format());
         this.formatMap = formatToIndexMap(vcfHeader, vcfRecord, formatFields);
-
-        this.sampleData = Arrays.copyOfRange(fields, Math.min(fields.length, 9),
-                fields.length);
-        this.hasGTFormat = formatMap.containsKey("GT");
-        int n = vcfHeader.samples().nSamples();
-        this.alleles = new byte[2][n];
-        this.isPhased = new boolean[n];
-        this.sampleFormatFields = new String[n][formatFields.length];
-        storePerSampleData(sampleData);
-    }
-
-    private static String[] getAndCheckFields(VcfHeader vcfHeader,
-            String vcfRecord) {
-        String[] fields = StringUtil.getFields(vcfRecord, Const.tab);
-        if (vcfHeader.nHeaderFields() != fields.length) {
-            File f = vcfHeader.file();
-            String src = "File source: " + (f!=null ? f : "stdin or unknown");
-            String s = "Header line has " + vcfHeader.nHeaderFields()
-                    + " fields, but data line has " + fields.length + " fields"
-                    + Const.nl + src + Const.nl + Arrays.toString(fields);
+        boolean storeGT = useGT && formatMap.containsKey("GT");
+        boolean storeGL = useGL &&
+                (formatMap.containsKey("PL") || formatMap.containsKey("GL"));
+        if (storeGT==false && storeGL==false) {
+            String s = "Missing required data: " + vcfRecord;
             throw new IllegalArgumentException(s);
         }
-        return fields;
+        this.gtEm = storeGT ? new BitSetGT(vcfHeader, vcfRecord) : null;
+        this.gls = storeGL ? likelihoodsFromGL(maxLR) : null;
+    }
+
+    /**
+     * Constructs and returns a new {@code VcfRecord} instance from a
+     * VCF record and its GT format subfield data
+     *
+     * @param vcfHeader meta-information lines and header line for the
+     * specified VCF record.
+     * @param vcfRecord a VCF record with a GL format field corresponding to
+     * the specified {@code vcfHeader} object
+     * @return a new {@code VcfRecord} instance
+     *
+     * @throws IllegalArgumentException if the VCF record does not have a
+     * GT format field
+     * @throws IllegalArgumentException if a VCF record format error is
+     * detected
+     * @throws IllegalArgumentException if there are not
+     * {@code vcfHeader.nHeaderFields()} tab-delimited fields in the
+     * specified VCF record
+     * @throws NullPointerException if
+     * {@code vcfHeader == null || vcfRecord == null}
+     */
+    public static VcfRecord fromGT(VcfHeader vcfHeader, String vcfRecord) {
+        boolean useGT = true;
+        boolean useGL = false;
+        float maxLR = Float.NaN;
+        return new VcfRecord(vcfHeader, vcfRecord, useGT, useGL, maxLR);
+    }
+
+    /**
+     * Constructs and returns a new {@code VcfRecord} instance from a
+     * VCF record and its GL or PL format subfield data. If both
+     * GL and PL format subfields are present, the GL format field will be used.
+     * If the maximum normalized genotype likelihood is 1.0 for a sample,
+     * then any other genotype likelihood for the sample that is less than
+     * {@code lrThreshold} is set to 0.
+     *
+     * @param vcfHeader meta-information lines and header line for the
+     * specified VCF record
+     * @param vcfRecord a VCF record with a GL format field corresponding to
+     * the specified {@code vcfHeader} object
+     * @param maxLR the maximum likelihood ratio
+     * @return a new {@code VcfRecord} instance
+     *
+     * @throws IllegalArgumentException if the VCF record does not have a
+     * GL format field
+     * @throws IllegalArgumentException if a VCF record format error is
+     * detected
+     * @throws IllegalArgumentException if there are not
+     * {@code vcfHeader.nHeaderFields()} tab-delimited fields in the
+     * specified VCF record
+     * @throws NullPointerException if
+     * {@code vcfHeader == null || vcfRecord == null}
+     */
+    public static VcfRecord fromGL(VcfHeader vcfHeader, String vcfRecord,
+            float maxLR) {
+        boolean useGT = false;
+        boolean useGL = true;
+        return new VcfRecord(vcfHeader, vcfRecord, useGT, useGL, maxLR);
+    }
+
+    /**
+     * Constructs and returns a new {@code VcfRecord} instance from a VCF
+     * record and its GT, GL, and PL format subfield data.
+     * If the GT format subfield is present and non-missing, the
+     * GT format subfield is used to determine genotype likelihoods.  Otherwise
+     * the GL or PL format subfield is used to determine genotype likelihoods.
+     * If both the GL and PL format subfields are present, only the GL format
+     * subfield will be used.  If the maximum normalized genotype likelihood
+     * is 1.0 for a sample, then any other genotype likelihood for the sample
+     * that is less than {@code lrThreshold} is set to 0.
+     *
+     * @param vcfHeader meta-information lines and header line for the
+     * specified VCF record
+     * @param vcfRecord a VCF record with a GT, a GL or a PL format field
+     * corresponding to the specified {@code vcfHeader} object
+     * @param maxLR the maximum likelihood ratio
+     * @return a new {@code VcfRecord}
+     *
+     * @throws IllegalArgumentException if the VCF record does not have a
+     * GT, GL, or PL format field
+     * @throws IllegalArgumentException if a VCF record format error is
+     * detected
+     * @throws IllegalArgumentException if there are not
+     * {@code vcfHeader.nHeaderFields()} tab-delimited fields in the
+     * specified VCF record
+     * @throws NullPointerException if
+     * {@code vcfHeader == null || vcfRecord == null}
+     */
+    public static VcfRecord fromGTGL(VcfHeader vcfHeader, String vcfRecord,
+            float maxLR) {
+        boolean useGT = true;
+        boolean useGL = true;
+        return new VcfRecord(vcfHeader, vcfRecord, useGT, useGL, maxLR);
+    }
+
+    private static int[] delimiters(VcfHeader vcfHeader, String vcfRecord) {
+        int nFields = vcfHeader.nHeaderFields();
+        int[] delimiters = new int[nFields + 1];
+        delimiters[0] = -1;
+        for (int j=1; j<nFields; ++j) {
+            delimiters[j] = vcfRecord.indexOf(Const.tab, delimiters[j-1] + 1);
+            if (delimiters[j] == -1) {
+                fieldCountError(vcfHeader, vcfRecord);
+            }
+        }
+        if (vcfRecord.indexOf(Const.tab, delimiters[nFields-1] + 1) != -1) {
+            fieldCountError(vcfHeader, vcfRecord);
+        }
+        delimiters[nFields] = vcfRecord.length();
+        return delimiters;
+    }
+
+    private static void fieldCountError(VcfHeader vcfHeader, String vcfRecord) {
+        File f = vcfHeader.file();
+        String[] fields = StringUtil.getFields(vcfRecord, Const.tab);
+        String src = "File source: " + (f!=null ? f : "stdin");
+        String s = "VCF header line has " + vcfHeader.nHeaderFields()
+                + " fields, but data line has " + fields.length + " fields"
+                + Const.nl + "File source:" + src
+                + Const.nl + Arrays.toString(fields);
+        throw new IllegalArgumentException(s);
     }
 
     /**
@@ -145,7 +228,7 @@ public class VcfRecord {
      * @return {@code true} if all characters in the specified
      * string are letters or digits and returns {@code false} otherwise.
      */
-    public static boolean isAlphanumeric(String s) {
+    private static boolean isAlphanumeric(String s) {
         for (int j=0, n=s.length(); j<n; ++j) {
             if (Character.isLetterOrDigit(s.charAt(j))==false) {
                 return false;
@@ -154,65 +237,22 @@ public class VcfRecord {
         return true;
     }
 
-    /**
-     * Returns {@code -10.0*Math.log10(d)}.
-     * @param d a double to convert to the Phred scale.
-     * @return {@code -10.0*Math.log10(d)}
-     */
-    public static double toPhred(double d) {
-        return -10.0*Math.log10(d);
-    }
-
-   /**
-     * Returns {@code Math.pow(10.0, -phred/10.0)}.
-     * @param phred a double to convert from the Phred scale.
-     * @return {@code Math.pow(10.0, -phred/10.0)}.
-     */
-    public static double fromPhred(double phred) {
-        return Math.pow(10.0, -phred/10.0);
-    }
-
-    private double quality(String quality) {
-        if (quality.equals(Const.MISSING_DATA_STRING)) {
-            return Double.NaN;
-        }
-        else {
-            return Double.parseDouble(quality);
-        }
-    }
-
-    private String[] failedFilters(String filters) {
-        if (filters.isEmpty()) {
-            String s = "missing FILTER field: " + vcfRecord;
-            throw new IllegalArgumentException(s);
-        }
-        if (filters.equals(Const.MISSING_DATA_STRING) || filters.equals("PASS")) {
-            return new String[0];
-        }
-        String[] fields = StringUtil.getFields(filters, Const.semicolon);
-        for (String f : fields) {
-            if (f.isEmpty()) {
-                String s = "missing filter in filter list: " + filters;
-                throw new IllegalArgumentException(s);
-            }
-        }
-        return fields;
-    }
-
     private String[] formats(String formats) {
-        if (formats.equals(Const.MISSING_DATA_STRING)) {
-            return new String[0];
+        if (formats.equals(Const.MISSING_DATA_STRING) || formats.isEmpty()) {
+            String s = "missing format field: " + vcfRecord;
+            throw new IllegalArgumentException(s);
         }
         String[] fields =  StringUtil.getFields(formats, Const.colon);
         for (String f : fields) {
             if (f.isEmpty()) {
-                String s = "missing format in format list: " + vcfRecord;
+                String s = "missing format in format subfield list: " + vcfRecord;
                 throw new IllegalArgumentException(s);
             }
-//            //  Commented-out alpha-numeric check to avoid throwing an
-//            //    exception when FORMAT field code is not alphanumeric.
+            //  Commented-out alpha-numeric check to avoid throwing an
+            //    exception when the FORMAT subfield code is not alphanumeric.
 //            if (isAlphanumeric(f)==false) {
-//                 String s = "format must be alphanumeric (" + f + "): " + vcfRecord;
+//                 String s = "format subfield must be alphanumeric (" + f + "): "
+//                         + vcfRecord;
 //                 throw new IllegalArgumentException(s);
 //            }
         }
@@ -221,11 +261,10 @@ public class VcfRecord {
 
     private static Map<String, Integer> formatToIndexMap(VcfHeader vcfHeader,
             String vcfRecord, String[] formatFields) {
-        if (vcfHeader.samples().nSamples()==0) {
+        if (vcfHeader.nSamples()==0) {
             return Collections.emptyMap();
         }
-        Map<String, Integer> map =
-                new HashMap<>(formatFields.length);
+        Map<String, Integer> map = new HashMap<>(formatFields.length);
         for (int j=0; j<formatFields.length; ++j) {
             map.put(formatFields[j], j);
         }
@@ -236,333 +275,264 @@ public class VcfRecord {
         return map;
     }
 
-    private void storePerSampleData(String[] sampleFields) {
-    /* Only GT field (optional first data field) is checked for validity */
-        int filteredIndex = 0;
-        for (int j=0; j<sampleFields.length; ++j) {
-            if (vcfHeader.filter(j)==false) {
-                String[] fields = parseSampleField(sampleFields, j);
-                if (hasGTFormat) {
-                    String gt = fields[0];
-                    int sepIndex = separatorIndex(gt);
-                    alleles[0][filteredIndex] = allele(gt.substring(0, sepIndex));
-                    alleles[1][filteredIndex] = allele(gt.substring(sepIndex+1));
-                    isPhased[filteredIndex]
-                            = (gt.charAt(sepIndex)==Const.phasedSep);
-                }
-                else {
-                    alleles[0][filteredIndex] = -1;
-                    alleles[1][filteredIndex] = -1;
-                    isPhased[filteredIndex] = false;
-                }
-                sampleFormatFields[filteredIndex++] = fields;
+    /* returns exclusive end */
+    private int formatSubfieldEnd(int start) {
+        while (start < vcfRecord.length()) {
+            char c = vcfRecord.charAt(start);
+            if (c == Const.colon || c == Const.tab) {
+                return start;
             }
+            ++start;
         }
-        assert filteredIndex==sampleFormatFields.length;
+        return start;
     }
 
-    private String[] parseSampleField(String[] sampleFields, int sampleIndex) {
-        String sampleField = sampleFields[sampleIndex];
-        if (sampleField.isEmpty()) {
-            String s = "Missing data for sample " +
-                    vcfHeader.samples().id(sampleIndex) + ": " + vcfRecord;
-            throw new IllegalArgumentException(s);
-        }
-        if (sampleField.equals(Const.MISSING_DATA_STRING)) {
-            String[] fields = new String[formatFields.length];
-            Arrays.fill(fields, Const.MISSING_DATA_STRING);
-            if (hasGTFormat) {
-                fields[0] = "./.";
+    private float[] likelihoodsFromGL(float maxLR) {
+        float minLR = 1f/maxLR;
+        int nGt = this.marker.nGenotypes();
+        String[] dataGL = hasFormat(GL_FORMAT) ? formatData(GL_FORMAT) : null;
+        String[] dataPL = hasFormat(PL_FORMAT) ? formatData(PL_FORMAT) : null;
+        double[] doubleLike = new double[nGt];
+        float[] floatLike = new float[nSamples()*nGt];
+        int floatLikeIndex = 0;
+        for (int s=0, n=nSamples(); s<n; ++s) {
+            Arrays.fill(doubleLike, 0.0);
+            if (dataGL != null) {
+                String[] fields = getGL(GL_FORMAT, dataGL, s, nGt);
+                for (int k=0; k<nGt; ++k) {
+                    doubleLike[k] = GL2Like(fields[k]);
+                }
             }
+            else if (dataPL != null) {
+                String[] fields = getGL(PL_FORMAT, dataPL, s, nGt);
+                for (int k=0; k<nGt; ++k) {
+                    doubleLike[k] = PL2Like(fields[k]);
+                }
+            }
+            rescaleToMax1(doubleLike);
+            for (int gt=0; gt<nGt; ++gt) {
+                if (doubleLike[gt] >= minLR) {
+                    floatLike[floatLikeIndex] = (float) doubleLike[gt];
+                }
+                ++floatLikeIndex;
+            }
+        }
+        assert floatLikeIndex==floatLike.length;
+        return floatLike;
+    }
+
+    private String[] getGL(String format, String[] sampleData,
+            int sample, int nGt) {
+        if (sampleData[sample].equals(Const.MISSING_DATA_STRING)) {
+            String[] fields = new String[nGt];
+            Arrays.fill(fields, "0");
             return fields;
         }
         else {
-            String[] fields = StringUtil.getFields(sampleField, Const.colon);
-            for (String f : fields) {
-                if (f.isEmpty()) {
-                    String s = "empty sub-field for sample "
-                            + vcfHeader.samples().id(sampleIndex)
-                            + ": " + sampleField;
+            String[] subfields = StringUtil.getFields(sampleData[sample],
+                    Const.comma);
+            if (subfields.length!=nGt) {
+                String s = "unexpected number of " + format + " subfields: "
+                        + sampleData(sample, format) + Const.nl
+                        + vcfRecord;
+                throw new IllegalArgumentException(s);
+            }
+            for (String subfield : subfields) {
+                if (subfield.equals(Const.MISSING_DATA_STRING)) {
+                    String s = "missing subfield in " + format + " field: "
+                        + sampleData(sample, format) + Const.nl
+                        + vcfRecord;
                     throw new IllegalArgumentException(s);
                 }
             }
-            if (fields.length < formatFields.length) {
-                String[] newFields = Arrays.copyOf(fields, formatFields.length);
-                for (int k=fields.length; k<newFields.length; ++k) {
-                    newFields[k] = Const.MISSING_DATA_STRING;
-                }
-                fields = newFields;
-            }
-            if (fields.length > formatFields.length) {
-                String s = "Expected at most " + formatFields.length
-                        + " sub-fields for sample "
-                        + vcfHeader.samples().id(sampleIndex) + ": " + vcfRecord;
-                throw new IllegalArgumentException(s);
-            }
-            return fields;
+            return subfields;
         }
     }
 
-    /**
-     * Returns the index of the genotype separator;
-     */
-    private int separatorIndex(String gt) {
-        int index = gt.indexOf(Const.unphasedSep);
-        if (index == -1) {
-            index = gt.indexOf(Const.phasedSep);
-            if (index== -1) {
-                String s = "missing genotype separator ("
-                        + gt + "): " + vcfRecord;
-                throw new IllegalArgumentException(s);
-            }
-        }
-        return index;
+    private static double GL2Like(String gl) {
+        return Math.pow(10.0, Double.parseDouble(gl));
     }
 
-    private byte allele(String allele) {
-        if (allele.isEmpty()) {
-            String s = "Missing a sample allele: " + vcfRecord;
-            throw new IllegalArgumentException(s);
+    private static double PL2Like(String pl) {
+        return Math.pow(10.0, -Integer.parseInt(pl)/10.0);
+    }
+
+    private static void rescaleToMax1(double[] like) {
+        double max = max(like);
+        if (max == 0.0f) {
+            Arrays.fill(like, 1.0);
         }
-        if (allele.equals(Const.MISSING_DATA_STRING)) {
-            return -1;
+        else {
+            for (int j=0; j<like.length; ++j) {
+                like[j] /= max;
+            }
         }
-        int a = Integer.parseInt(allele);
-        if (a < 0) {
-            String s = "allele cannot be negative (" + a + "): " + vcfRecord;
-            throw new IllegalArgumentException(s);
+    }
+
+    /* returns max{double[] like, double 0.0} */
+    private static double max(double[] like) {
+        double max = 0.0;
+        for (int k=0; k<like.length; ++k) {
+            if (like[k] > max) {
+                max = like[k];
+            }
         }
-        if (a >= marker.nAlleles()) {
-            String s = "allele " + a + " is not defined: " + vcfRecord;
-            throw new IllegalArgumentException(s);
-        }
-        if (a > Byte.MAX_VALUE) {
-            String s = "Marker cannot have more than " + Byte.MAX_VALUE
-                    + " alternate alleles: " + vcfRecord;
-            throw new IllegalArgumentException(s);
-        }
-        return (byte) a;
+        return max;
     }
 
     /**
      * Returns the QUAL field.
-     * @return the QUAL field.
+     * @return the QUAL field
      */
     public String qual() {
-        return qual;
-    }
-
-    /**
-     * Returns the probability that the asserted presence or absence of
-     * alternate bases is incorrect.  If ALT is ”.” (no variant) then this is
-     * P(variant), and if ALT is not ”.” then this P(no variant).
-     *
-     * @return the probability that the asserted presence or absence of
-     * alternate bases is incorrect.
-     */
-    public double qualityScore() {
-        return qualityScore;
-    }
-
-    /**
-     * Returns {@code true} if filters were applied, and returns
-     * {@code false} if the FILTER field has missing data.
-     *
-     * @return {@code true} if filters were applied, and returns
-     * {@code false} if the FILTER field has missing data.
-     */
-    public boolean filtersApplied() {
-        return filtersApplied;
+        return vcfRecord.substring(delimiters[5] + 1, delimiters[6]);
     }
 
     /**
      * Returns the FILTER field.
-     * @return the FILTER field.
+     * @return the FILTER field
      */
     public String filter() {
-        return filter;
-    }
-
-    /**
-     * Returns the number of failed filters.
-     * @return the number of failed filters.
-     */
-    public int nFailedFilters() {
-        return failedFilters.length;
-    }
-
-    /**
-     * Returns the specified failed filter code.
-     *
-     * @param index a failed filter index.
-     * @return the specified failed filter code.
-     *
-     * @throws IndexOutOfBoundsException if
-     * {@code index<0 || index>=this.nFailedFilters()}.
-     */
-    public String failedFilters(int index) {
-        return failedFilters[index];
+        return vcfRecord.substring(delimiters[6] + 1, delimiters[7]);
     }
 
     /**
      * Returns the INFO field.
-     * @return the INFO field.
+     * @return the INFO field
      */
     public String info() {
-        return info;
-    }
-
-    /**
-     * Returns the number of INFO sub-fields.
-     * @return the number of INFO sub-fields.
-     */
-    public int nInfoFields() {
-        return infoFields.length;
-    }
-
-    /**
-     * Returns the specified INFO sub-field.
-     * @param subfield an INFO sub-field index.
-     * @return the specified INFO sub-field.
-     *
-     * @throws IndexOutOfBoundsException if
-     * {@code index<0 || index>=this.nInfoFields()}.
-     */
-    public String infoField(int subfield) {
-        return infoFields[subfield];
+        return vcfRecord.substring(delimiters[7] + 1, delimiters[8]);
     }
 
     /**
      * Returns the FORMAT field.  Returns the empty string ("") if the FORMAT
      * field is missing.
-     * @return the FORMAT field.
+     * @return the FORMAT field
      */
     public String format() {
-        return format;
+        if (delimiters.length > 9) {
+            return vcfRecord.substring(delimiters[8] + 1, delimiters[9]);
+        }
+        else {
+            return "";
+        }
     }
 
     /**
      * Returns the number of FORMAT subfields.
-     * @return the number of FORMAT subfields.
+     * @return the number of FORMAT subfields
      */
-    public int nFormatFields() {
+    public int nFormatSubfields() {
         return formatFields.length;
     }
 
     /**
      * Returns the specified FORMAT subfield.
-     * @param index a FORMAT subfield index.
-     * @return the specified FORMAT subfield.
+     * @param subfieldIndex a FORMAT subfield index
+     * @return the specified FORMAT subfield
      *
      * @throws IndexOutOfBoundsException if
-     * {@code index<0 || index>=this.nFormatFields()}.
+     * {@code subfieldIndex < 0 || subfieldIndex >= this.nFormatSubfields()}
      */
-    public String formatField(int index) {
+    public String formatSubfield(int subfieldIndex) {
         if (formatFields==null) {
             throw new IllegalArgumentException("No format exists");
         }
-        return formatFields[index];
+        return formatFields[subfieldIndex];
     }
 
     /**
      * Returns {@code true} if the specified FORMAT subfield is
      * present, and returns {@code false} otherwise.
-     * @param formatCode a FORMAT sub-field code.
+     * @param formatCode a FORMAT subfield code
      * @return {@code true} if the specified FORMAT subfield is
-     * present, and returns {@code false} otherwise.
+     * present
      */
     public boolean hasFormat(String formatCode) {
         return formatMap.get(formatCode)!=null;
     }
 
     /**
-     * Returns the index of the specified FORMAT subfield code if the
-     * specified subfield is defined for the VCF record and returns -1
+     * Returns the index of the specified FORMAT subfield if the
+     * specified subfield is defined for this VCF record, and returns -1
      * otherwise.
-     * @param formatCode the string format code.
-     * @return the index of the specified FORMAT subfield code if the
-     * specified subfield is defined for the VCF record and returns -1
-     * otherwise.
+     * @param formatCode the format subfield code
+     * @return the index of the specified FORMAT subfield if the
+     * specified subfield is defined for this VCF record, and {@code -1}
+     * otherwise
      */
     public int formatIndex(String formatCode) {
         Integer index = formatMap.get(formatCode);
-        return (index==null) ? -1 : index.intValue();
-    }
-
-    /**
-     * Returns the specified sample allele.
-     * @param sample a sample index.
-     * @param allele an allele index.
-     * @return the specified sample allele.
-     *
-     * @throws IndexOutOfBoundsException if
-     * {@code sample<0 || sample>=this.nSamples()}.
-     * @throws IndexOutOfBoundsException if
-     * {@code allele<0 || allele>=2}.
-     */
-    public byte gt(int sample, int allele) {
-        return alleles[allele][sample];
-    }
-
-    /**
-     * Returns {@code true} if the genotype for the specified sample is
-     * phased and returns {@code false} otherwise.
-     * @param sample a sample index.
-     * @return  {@code true} if the genotype for the specified sample is
-     * phased and returns {@code false} if the genotype is unphased.
-     *
-     * @throws IndexOutOfBoundsException if
-     * {@code sample<0 || sample>=this.nSamples()}.
-     */
-    public boolean isPhased(int sample) {
-        return isPhased[sample];
+        return (index==null) ? -1 : index;
     }
 
     /**
      * Returns the data for the specified sample.
      * @param sample a sample index
-     * @return the data for the specified sample.
+     * @return the data for the specified sample
      *
      * @throws IndexOutOfBoundsException if
-     * {@code sample<0 || sample>=this.nSamples()}.
+     * {@code sample < 0 || sample >= this.nSamples()}
      */
     public String sampleData(int sample) {
-        return sampleData[sample];
+        int index = vcfHeader.unfilteredSampleIndex(sample);
+        return vcfRecord.substring(delimiters[index + sampleOffset] + 1,
+                delimiters[index + sampleOffset + 1]);
     }
 
     /**
-     * Returns the specified FORMAT subfield data for the specified sample.
-     * @param formatCode a FORMAT subfield code.
+     * Returns the specified data for the specified sample.
      * @param sample a sample index
-     * @return the specified FORMAT subfield data for the specified sample.
+     * @param formatCode a FORMAT subfield code
+     * @return the specified data for the specified sample
      *
      * @throws IllegalArgumentException if
-     * {@code this.hasFormat(formatCode)==false}.
+     * {@code this.hasFormat(formatCode)==false}
      * @throws IndexOutOfBoundsException if
-     * {@code sample<0 || sample>=this.nSamples()}.
+     * {@code sample < 0 || sample >= this.nSamples()}
      */
-    public String sampleFormatData(String formatCode, int sample) {
+    public String sampleData(int sample, String formatCode) {
         Integer formatIndex = formatMap.get(formatCode);
         if (formatIndex==null) {
             String s = "missing format data: " + formatCode;
             throw new IllegalArgumentException(s);
         }
-        return sampleFormatFields[sample][formatIndex];
+        return VcfRecord.this.sampleData(sample, formatIndex);
     }
 
     /**
-     * Returns the specified FORMAT subfield data for the specified sample.
-     * @param subfield a FORMAT subfield index.
-     * @param sample a sample index.
-     * @return the specified FORMAT subfield data for the specified sample.
+     * Returns the specified data for the specified sample.
+     * @param sample a sample index
+     * @param subfieldIndex a FORMAT subfield index
+     * @return the specified data for the specified sample
      *
      * @throws IndexOutOfBoundsException if
-     * {@code subfield<0 || subfield>=this.nFormatFields()}.
+     * {@code field < 0 || field >= this.nFormatSubfields()}
      * @throws IndexOutOfBoundsException if
-     * {@code sampleIndex<0 || sampleIndex>=this.nSamples()}.
+     * {@code sample < 0 || sample >= this.nSamples()}
      */
-    public String sampleFormatData(int subfield, int sample) {
-        return sampleFormatFields[sample][subfield];
+    public String sampleData(int sample, int subfieldIndex) {
+        if (subfieldIndex < 0 || subfieldIndex >= formatFields.length) {
+            throw new IndexOutOfBoundsException(String.valueOf(subfieldIndex));
+        }
+        int index = sampleOffset + vcfHeader.unfilteredSampleIndex(sample);
+        int start = delimiters[index] + 1;
+        for (int j = 0; j < subfieldIndex; ++j) {
+            int end = formatSubfieldEnd(start);
+            if (end==vcfRecord.length() || vcfRecord.charAt(end)==Const.tab) {
+                return ".";
+            }
+            else {
+                start = end + 1;
+            }
+        }
+        int end = formatSubfieldEnd(start);
+        if (end==start) {
+            return ".";
+        }
+        else {
+            return vcfRecord.substring(start, end);
+        }
     }
 
     /**
@@ -570,12 +540,12 @@ public class VcfRecord {
      * containing the specified FORMAT subfield data for each sample.  The
      * {@code k}-th element of the array is the specified FORMAT subfield data
      * for the {@code k}-th sample.
-     * @param formatCode a format-field code.
+     * @param formatCode a format subfield code
      * @return an array of length {@code this.nSamples()}
-     * containing the specified FORMAT subfield data for each sample.
+     * containing the specified FORMAT subfield data for each sample
      *
      * @throws IllegalArgumentException if
-     * {@code this.hasFormat(formatCode)==false}.
+     * {@code this.hasFormat(formatCode) == false}
      */
     public String[] formatData(String formatCode) {
         Integer formatIndex = formatMap.get(formatCode);
@@ -583,68 +553,121 @@ public class VcfRecord {
             String s = "missing format data: " + formatCode;
             throw new IllegalArgumentException(s);
         }
-        return formatData(formatIndex);
-    }
-
-   /**
-     * Returns an array of length {@code this.nSamples()}
-     * containing the specified FORMAT subfield data for each sample.  The
-     * {@code k}-th element of the returned array is the specified FORMAT
-     * subfield data for the {@code k}-th sample.
-     * @param subfield a FORMAT subfield index.
-     * @return an array of length {@code this.nSamples()}
-     * containing the specified FORMAT subfield data for each sample.
-     *
-     * @throws IndexOutOfBoundsException if
-     * {@code subfield<0 || subfield>=this.nFormatFields()}.
-     */
-    public String[] formatData(int subfield) {
-        String[] sa = new String[sampleFormatFields.length];
+        String[] sa = new String[vcfHeader.nSamples()];
         for (int j=0; j<sa.length; ++j) {
-            sa[j] = sampleFormatFields[j][subfield];
+            sa[j] = sampleData(j, formatIndex);
         }
         return sa;
     }
 
-    /**
-     * Returns the samples. The returned samples are the filtered samples
-     * after all sample exclusions.
-     *
-     * @return the samples.
-     */
+    @Override
     public Samples samples() {
         return vcfHeader.samples();
     }
 
-    /**
-     * Returns the number of samples.  The number of samples is the
-     * number of filtered samples after all sample exclusions.
-     *
-     * @return the number of samples.
-     */
+
+    @Override
     public int nSamples() {
-        return vcfHeader.samples().nSamples();
+        return vcfHeader.nSamples();
     }
 
     /**
-     * Returns the VCF header line and meta-information lines.
-     * @return the VCF header line and meta-information lines.
+     * Returns the VCF meta-information lines and the VCF header line.
+     * @return the VCF meta-information lines and the VCF header line
      */
     public VcfHeader vcfHeader() {
         return vcfHeader;
     }
 
-    /**
-     * Returns the marker.
-     * @return the marker.
-     */
+    @Override
     public Marker marker() {
         return marker;
     }
 
+    @Override
+    public int allele1(int sample) {
+        return gtEm == null ? -1 : gtEm.allele1(sample);
+    }
+
+    @Override
+    public int allele2(int sample) {
+        return gtEm == null ? -1 : gtEm.allele2(sample);
+    }
+
+    @Override
+    public boolean isPhased(int sample) {
+        return gtEm == null ? false : gtEm.isPhased(sample);
+    }
+
+    @Override
+    public boolean isRefData() {
+        return  gtEm == null ? false : gtEm.isRefData();
+    }
+
+    @Override
+    public float gl(int sample, int allele1, int allele2) {
+        if (gtEm==null
+                || (gls!=null
+                && (gtEm.allele1(sample) == -1 || gtEm.allele2(sample) == -1))) {
+            int n = marker.nAlleles();
+            if (allele1 < 0 || allele2 < 0 || allele1 >= n || allele2 >= n) {
+                String s = allele1 + " " + allele2 + " " + n;
+                throw new ArrayIndexOutOfBoundsException(s);
+            }
+            int gtIndex = VcfRecord.gtIndex(allele1, allele2);
+            return gls[(sample*marker.nGenotypes()) + gtIndex];
+        }
+        else {
+            return gtEm.gl(sample, allele1, allele2);
+        }
+    }
+
+    @Override
+    public int allele(int hap) {
+        return gtEm == null ? -1 : gtEm.allele(hap);
+    }
+
+    @Override
+    public int nAlleles() {
+        return this.marker().nAlleles();
+    }
+
+    @Override
+    public boolean storesNonMajorIndices() {
+        return false;
+    }
+
+    @Override
+    public int majorAllele() {
+        String s = "this.storesNonMajorIndices()==false";
+        throw new UnsupportedOperationException(s);
+    }
+
+    @Override
+    public int alleleCount(int allele) {
+        String s = "this.storesNonMajorIndices()==false";
+        throw new UnsupportedOperationException(s);
+    }
+
+    @Override
+    public int hapIndex(int allele, int copy) {
+        String s = "this.storesNonMajorIndices()==false";
+        throw new UnsupportedOperationException(s);
+    }
+
+    @Override
+    public int nHaps() {
+        return 2*vcfHeader.nSamples();
+    }
+
+    @Override
+    public int nHapPairs() {
+        return vcfHeader.nSamples();
+    }
+
     /**
      * Returns the VCF record.
-     * @return the VCF record.
+     * @return the VCF record
      */
     @Override
     public String toString() {

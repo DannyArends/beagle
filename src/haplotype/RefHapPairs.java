@@ -24,9 +24,10 @@ import vcf.Markers;
 import vcf.VcfEmission;
 
 /**
- * <p>Class {@code RefHapPairs} stores a list of reference haplotype pairs.
+ * <p>Class {@code RefHapPairs} stores a list of samples and a
+ * haplotype pair for each sample.
  * </p>
- * Instances of class {@code RefHapPairs} are immutable.
+ * <p>Instances of class {@code RefHapPairs} are immutable.<p>
  *
  * @author Brian L. Browning {@code <browning@uw.edu>}
  */
@@ -34,54 +35,55 @@ public class RefHapPairs implements SampleHapPairs {
 
     private final Markers markers;
     private final Samples samples;
-    private final VcfEmission[] phasedMarkers;
+    private final VcfEmission[] refVcfRecs;
 
     /**
-     * Constructs a {@code RefHapPairs} instance for the specified
-     * reference genotype data.
-     * @param markers the sequence of markers.
-     * @param samples the sequence of samples.
-     * @param phasedMarkers the sequence of per-marker genotype data.
+     * Constructs a new {@code RefHapPairs} instance.
+     * @param markers the sequence of markers
+     * @param samples the sequence of samples
+     * @param refVcfRecs the sequence of per-marker genotype data
      *
      * @throws IllegalArgumentException if
-     * {@code markers.nMarkers()!=phasedMarkers.length}.
+     * {@code markers.nMarkers() != refVcfRecs.length}
      * @throws IllegalArgumentException if
-     * {@code phasedMarkers[k].samples().equals(samples)==false} for some
-     * {@code 0<=k  && k<phasedMarkers.length}.
+     * {@code refVcfRecs[k].samples().equals(samples) == false} for any
+     * {@code k} satisfying {@code 0 <= k  && k < refVcfRecs.length}
      * @throws IllegalArgumentException if
-     * {@code phasedMarkers[k].marker().equals(markers.marker(k))==false}
-     * for some {@code 0<=k && k<phasedMarkers.length}.
+     * {@code refVcfRecs[k].marker().equals(markers.marker(k)) == false}
+     * for any {@code k} satisfying {@code 0 <= k && k < refVcfRecs.length}
      * @throws IllegalArgumentException if
-     * {@code phasedMarkers[k].isRefData()==false}
-     * for some {@code 0<=k && k<phasedMarkers.length}.
+     * {@code refVcfRecs[k].isRefData() == false} for any {@code k}
+     * satisfying {@code 0 <= k && k < refVcfRecs.length}
      * @throws NullPointerException if
-     * {@code markers==null || samples==null || phasedMarkers==null}.
+     * {@code markers == null || samples == null || refVcfRecs == null
+     * || refVcfRecs[k] == null} for any {@code k} satisfying
+     * {@code 0 <= k && k <= refVcfRecs.length}
      */
     public RefHapPairs(Markers markers, Samples samples,
-            VcfEmission[] phasedMarkers) {
-        checkPhasedMarkers(markers, samples, phasedMarkers);
+            VcfEmission[] refVcfRecs) {
+        checkPhasedMarkers(markers, samples, refVcfRecs);
         this.markers = markers;
         this.samples = samples;
-        this.phasedMarkers = phasedMarkers.clone();
+        this.refVcfRecs = refVcfRecs.clone();
     }
 
     private static void checkPhasedMarkers(Markers markers, Samples samples,
-            VcfEmission[] phasedMarkers) {
-        if (markers.nMarkers()!=phasedMarkers.length) {
+            VcfEmission[] refVcfRecs) {
+        if (markers.nMarkers()!=refVcfRecs.length) {
             String s = "markers.nMarkers()=" + markers.nMarkers()
-                    + " phasedMarkers.length=" + phasedMarkers.length;
+                    + " refVcfRecs.length=" + refVcfRecs.length;
             throw new IllegalArgumentException(s);
         }
-        for (int j=0; j<phasedMarkers.length; ++j) {
-            if (phasedMarkers[j].samples().equals(samples)==false) {
+        for (int j=0; j<refVcfRecs.length; ++j) {
+            if (refVcfRecs[j].samples().equals(samples)==false) {
                 String s = "sample inconsistency at index " + j;
                 throw new IllegalArgumentException(s);
             }
-            if (phasedMarkers[j].marker().equals(markers.marker(j))==false) {
+            if (refVcfRecs[j].marker().equals(markers.marker(j))==false) {
                 String s = "marker inconsistency at index " + j;
                 throw new IllegalArgumentException(s);
             }
-            if (phasedMarkers[j].isRefData()==false) {
+            if (refVcfRecs[j].isRefData()==false) {
                 String s = "non-reference data at marker index " + j;
                 throw new IllegalArgumentException(s);
             }
@@ -89,23 +91,23 @@ public class RefHapPairs implements SampleHapPairs {
     }
 
     @Override
-    public byte allele1(int marker, int hapPair) {
-        return phasedMarkers[marker].allele1(hapPair);
+    public int allele1(int marker, int hapPair) {
+        return refVcfRecs[marker].allele1(hapPair);
     }
 
     @Override
-    public byte allele2(int marker, int hapPair) {
-        return phasedMarkers[marker].allele2(hapPair);
+    public int allele2(int marker, int hapPair) {
+        return refVcfRecs[marker].allele2(hapPair);
     }
 
     @Override
-    public byte allele(int marker, int haplotype) {
+    public int allele(int marker, int haplotype) {
         int hapPair = haplotype/2;
         if ((haplotype & 1)==0) {
-            return phasedMarkers[marker].allele1(hapPair);
+            return refVcfRecs[marker].allele1(hapPair);
         }
         else {
-            return phasedMarkers[marker].allele2(hapPair);
+            return refVcfRecs[marker].allele2(hapPair);
         }
     }
 
@@ -145,7 +147,43 @@ public class RefHapPairs implements SampleHapPairs {
     }
 
     @Override
-    public int idIndex(int hapPair) {
-        return samples.idIndex(hapPair);
+    public Samples samples(int hapPair) {
+        if (hapPair < 0 || hapPair >= samples.nSamples()) {
+            throw new IndexOutOfBoundsException(String.valueOf(hapPair));
+        }
+        return samples;
+    }
+
+    @Override
+    public int sampleIndex(int hapPair) {
+        if (hapPair < 0 || hapPair >= samples.nSamples()) {
+            throw new IndexOutOfBoundsException(String.valueOf(hapPair));
+        }
+        return hapPair;
+    }
+
+    @Override
+    public int nAlleles(int marker) {
+        return refVcfRecs[marker].nAlleles();
+    }
+
+    @Override
+    public boolean storesNonMajorIndices(int marker) {
+        return refVcfRecs[marker].storesNonMajorIndices();
+    }
+
+    @Override
+    public int majorAllele(int marker) {
+        return refVcfRecs[marker].majorAllele();
+    }
+
+    @Override
+    public int alleleCount(int marker, int allele) {
+        return refVcfRecs[marker].alleleCount(allele);
+    }
+
+    @Override
+    public int hapIndex(int marker, int allele, int copy) {
+        return refVcfRecs[marker].hapIndex(allele, copy);
     }
 }

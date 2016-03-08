@@ -33,69 +33,79 @@ import beagleutil.Samples;
 public class RevGenotypeValues implements GenotypeValues {
 
     /*
-     * All instances of {@code GenotypeValues} are required to be
+     * All instances of the {@code GenotypeValues} interface are required to be
      * thread-safe.
      */
-    private final GenotypeValues gvi;
+    private final GenotypeValues gv;
 
     /**
-     * Constructs a new {@code RevGenotypeValues} instance.
-     * @param gv genotype values that will be wrapped by the new instance.
-     * @throws NullPointerException if {@code gv==null}.
+     * Constructs a new {@code RevGenotypeValues} instance from the specified
+     * data.
+     * @param gv genotype values that will be wrapped by the new instance
+     * @throws NullPointerException if {@code gv == null}
      */
     public RevGenotypeValues(GenotypeValues gv) {
-        this.gvi = gv;
+        this.gv = gv;
     }
 
     @Override
     public float value(int marker, int sample, int genotype) {
-        int revMarker = gvi.nMarkers() - 1 - marker;
-        return gvi.value(revMarker, sample, genotype);
+        int revMarker = gv.nMarkers() - 1 - marker;
+        return gv.value(revMarker, sample, genotype);
     }
 
     @Override
     public void add(int sample, double[] values) {
-        if (values.length != gvi.markers().sumGenotypes()) {
+        if (values.length != gv.markers().sumGenotypes()) {
             throw new IllegalArgumentException("values.length=" + values.length);
         }
         int index = 0;
-        for (int m=0, n=gvi.nMarkers(); m<n; ++m) {
-            int revMarker = gvi.nMarkers() - 1 - m;
-            int nGt = gvi.marker(revMarker).nGenotypes();
+        for (int m=0, n=gv.nMarkers(); m<n; ++m) {
+            int revMarker = gv.nMarkers() - 1 - m;
+            int nGt = gv.marker(revMarker).nGenotypes();
             for (int gt=0; gt<nGt; ++gt) {
-                gvi.add(revMarker, sample, gt, values[index++]);
+                gv.add(revMarker, sample, gt, values[index++]);
             }
         }
     }
 
     @Override
     public void add(int marker, int sample, int genotype, double value) {
-        int revMarker = gvi.nMarkers() - 1 - marker;
-        gvi.add(revMarker, sample, genotype, value);
+        int revMarker = gv.nMarkers() - 1 - marker;
+        gv.add(revMarker, sample, genotype, value);
     }
 
     @Override
     public Samples samples() {
-        return gvi.samples();
+        return gv.samples();
     }
 
     @Override
     public int nSamples() {
-        return gvi.nSamples();
+        return gv.nSamples();
     }
 
     @Override
     public Marker marker(int marker) {
-        return gvi.markers().reverse().marker(marker);
+        return gv.markers().reverse().marker(marker);
     }
 
     @Override
     public Markers markers() {
-        return gvi.markers().reverse();
+        return gv.markers().reverse();
     }
 
     @Override
     public int nMarkers() {
-        return gvi.nMarkers();
+        return gv.nMarkers();
+    }
+
+    @Override
+    public String toString() {
+        StringBuilder sb = new StringBuilder(100);
+        sb.append('[');
+        sb.append(this.getClass().toString());
+        sb.append(']');
+        return sb.toString();
     }
 }

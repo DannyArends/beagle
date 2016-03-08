@@ -18,23 +18,83 @@
  */
 package blbutil;
 
+import java.util.Collection;
+import java.util.HashSet;
+import java.util.Set;
+
 /**
- * A filter for accepting or rejecting objects.
+ * <p>A filter for accepting or rejecting objects.
+ * </p>
+ * Instances of class {@code Filter} are required to be immutable.
  *
-  @param <E> the type of object that is filtered.
+ * @param <E> the type of object that is filtered.
  *
- * @author Brian L. Browning
+ * @author Brian L. Browning {@code <browning@uw.edu>}
  */
 public interface Filter<E> {
 
     /**
-     * Returns {@code true} if the specified object is
-     * accepted and returns {@code false} otherwise.
-     * @param e the object to be filtered.
-     * @return {@code true} if the specified object is
-     * accepted and {@code false} if the specified object is
-     * rejected.
-     * @throws NullPointerException if {@code e==null}.
+     * Returns a filter that accepts all non-null objects.
+     * @param <E> the type of object that is filtered
+     * @return a filter that accepts all non-null objects
      */
-    public abstract boolean accept(E e);
+    static <E> Filter<E> acceptAllFilter() {
+        return (E e) -> {
+            if (e == null) {
+                throw new NullPointerException("e==null");
+            }
+            return true;
+        };
+    }
+
+    /**
+     * Returns a filter that accepts all non-null objects that are
+     * contained in the specified collection.
+     * @param <E> the type of object that is filtered
+     * @param include the collection of objects that will be accepted by
+     * the filter
+     * @return a filter that accepts all non-null objects that are
+     * contained in the specified collection
+     * @throws NullPointerException if {@code include == null}
+     */
+    static <E> Filter<E> includeFilter(Collection<E> include) {
+        final Set<E> includeSet = new HashSet<>(include);
+        return (E e) -> {
+            if (e == null) {
+                throw new NullPointerException("e==null");
+            }
+            return includeSet.contains(e);
+        };
+    }
+
+    /**
+     * Returns a filter that accepts all non-null objects that are not
+     * contained in the specified collection.
+     * @param <E> the type of object that is filtered
+     * @param exclude the collection of objects that will be rejected
+     * by the filter
+     * @return a filter that accepts all non-null objects that are not
+     * contained in the specified collection
+     * @throws NullPointerException if {@code exclude == null}
+     */
+    static <E> Filter<E> excludeFilter(Collection<E> exclude) {
+        final Set<E> includeSet = new HashSet<>(exclude);
+        return (E e) -> {
+            if (e == null) {
+                throw new NullPointerException("e==null");
+            }
+            return !includeSet.contains(e);
+        };
+    }
+
+    /**
+     * Returns {@code true} if the specified object is
+     * accepted and returns {@code false} if the specified object
+     * is rejected.
+     * @param e the object to be filtered
+     * @return {@code true} if the specified object is
+     * accepted
+     * @throws NullPointerException if {@code e==null}
+     */
+    boolean accept(E e);
 }

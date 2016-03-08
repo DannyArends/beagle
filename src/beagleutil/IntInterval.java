@@ -19,8 +19,10 @@
 package beagleutil;
 
 /**
- * Interface {@code IntInterval} represents an interval of
+ * <p>Interface {@code IntInterval} represents an interval of
  * consecutive integers.
+ * </p>
+ * Instances of class {@code IntInterval} are immutable.
  *
  * @author Brian L. Browning {@code <browning@uw.edu>}
  */

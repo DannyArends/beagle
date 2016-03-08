@@ -18,12 +18,15 @@
  */
 package haplotype;
 
+import beagleutil.Samples;
 import java.util.List;
 import vcf.Marker;
 import vcf.Markers;
 
 /**
- * <p>Class {@code BasicHapPairs} stores a list of haplotype pairs.
+ * <p>Class {@code BasicHapPairs} represents a list of haplotype pairs.
+ * Each haplotype pair is guaranteed to have two non-missing
+ * alleles at each marker.
  * </p>
  * Instances of class {@code BasicHapPairs} are immutable.
  *
@@ -33,69 +36,38 @@ public final class BasicHapPairs implements HapPairs {
 
     private final Markers markers;
     private final HapPair[] hapPairs;
-    private final boolean reverseMarkers;
-    private final int lastMarker;
 
     /**
-     * Constructs a {@code SimpleHapPairs} instance corresponding to
+     * Constructs a new {@code BasicHapPairs} instance corresponding to
      * the specified list of haplotype pairs.
-     * @param hapPairList a list of haplotype pairs.
+     * @param hapPairList a list of haplotype pairs
      *
      * @throws IllegalArgumentException if
-     * {@code hapPairList.isEmpty()==true}.
-     * @throws NullPointerException if {@code hapPairList==null},
-     * or if any element of {@code hapPairList} is null.
+     * {@code hapPairList.isEmpty() == true}
+     * @throws NullPointerException if
+     * {@code (hapPairList == null || hapPairList[j] == null)} for any {@code j}
+     * satisfying {@code (0 <= j && j < hapPairsList.size())}
      */
     public BasicHapPairs(List<HapPair> hapPairList) {
-        this(hapPairList, false);
-    }
-
-    /**
-     * Constructs a {@code SimpleHapPairs} instance corresponding to
-     * the specified list of haplotype pairs.
-     * @param hapPairList a list of haplotype pairs.
-     * @param reverseMarkers {@code true} if the marker order of the
-     * specified haplotype pairs will be reversed, and {@code false}
-     * otherwise.
-     *
-     * @throws IllegalArgumentException if
-     * {@code hapPairList.isEmpty()==true}.
-     * @throws NullPointerException if {@code hapPairList==null},
-     * or if any element of {@code hapPairList} is null.
-     */
-    public BasicHapPairs(List<HapPair> hapPairList, boolean reverseMarkers) {
         if (hapPairList.isEmpty()) {
             throw new IllegalArgumentException("haps.isEmpy()==true");
         }
-        Markers mrkrs = BasicSampleHapPairs.checkAndExtractMarkers(hapPairList);
-        this.markers = (reverseMarkers ? mrkrs.reverse() : mrkrs);
+        this.markers = BasicSampleHapPairs.checkAndExtractMarkers(hapPairList);
         this.hapPairs = hapPairList.toArray(new HapPair[0]);
-        this.reverseMarkers = reverseMarkers;
-        this.lastMarker = markers.nMarkers() - 1;
     }
 
-
     @Override
-    public byte allele1(int marker, int hapPair) {
-        if (reverseMarkers) {
-            marker = lastMarker - marker;
-        }
+    public int allele1(int marker, int hapPair) {
         return hapPairs[hapPair].allele1(marker);
     }
 
     @Override
-    public byte allele2(int marker, int hapPair) {
-        if (reverseMarkers) {
-            marker = lastMarker - marker;
-        }
+    public int allele2(int marker, int hapPair) {
         return hapPairs[hapPair].allele2(marker);
     }
 
     @Override
-    public byte allele(int marker, int haplotype) {
-        if (reverseMarkers) {
-            marker = lastMarker - marker;
-        }
+    public int allele(int marker, int haplotype) {
         int hapPair = haplotype / 2;
         if ((haplotype & 1) == 0) {
             return hapPairs[hapPair].allele1(marker);
@@ -130,20 +102,28 @@ public final class BasicHapPairs implements HapPairs {
     }
 
     @Override
-    public int idIndex(int hapPair) {
-        return hapPairs[hapPair].idIndex();
+    public Samples samples(int hapPair) {
+        return hapPairs[hapPair].samples();
+    }
+
+    @Override
+    public int sampleIndex(int hapPair) {
+        return hapPairs[hapPair].sampleIndex();
     }
 
     /**
      * Returns a string representation of {@code this}.  The exact details
      * of the representation are unspecified and subject to change.
-     * @return a string representation of {@code this}.
+     * @return a string representation of {@code this}
      */
     @Override
     public String toString() {
         StringBuilder sb = new StringBuilder(10000);
-        sb.append("BasicHapPairs: nHapPairs=");
+        sb.append('[');
+        sb.append(this.getClass().toString());
+        sb.append(": nHapPairs=");
         sb.append(this.nHapPairs());
+        sb.append(']');
         return sb.toString();
     }
 }

@@ -31,18 +31,21 @@ import beagleutil.Samples;
  */
 public final class RevGL implements GL {
 
-    private final int lastMarker;
+    /*
+     * All instances of the {@code GL} interface are required to be immutable.
+     */
     private final GL gl;
+    private final int lastMarker;
 
     /**
      * Constructs a new {@code RevGL} instance.
      * @param gl genotype emission probabilities that will be
-     * wrapped by the new instance.
-     * @throws NullPointerException if {@code gl==null}.
+     * wrapped by the new instance
+     * @throws NullPointerException if {@code gl == null}
      */
     public RevGL(GL gl) {
-        this.lastMarker = gl.nMarkers() - 1;
         this.gl = gl;
+        this.lastMarker = gl.nMarkers() - 1;
     }
 
     @Override
@@ -51,21 +54,33 @@ public final class RevGL implements GL {
     }
 
     @Override
-    public float gl(int marker, int sample, byte allele1, byte allele2) {
+    public float gl(int marker, int sample, int allele1, int allele2) {
         int revMarker = lastMarker - marker;
         return gl.gl(revMarker, sample, allele1, allele2);
     }
 
     @Override
-    public byte allele1(int marker, int sample) {
+    public boolean isPhased(int marker, int sample) {
+        int revMarker = lastMarker - marker;
+        return gl.isPhased(revMarker, sample);
+    }
+
+    @Override
+    public int allele1(int marker, int sample) {
         int revMarker = lastMarker - marker;
         return gl.allele1(revMarker, sample);
     }
 
     @Override
-    public byte allele2(int marker, int sample) {
+    public int allele2(int marker, int sample) {
         int revMarker = lastMarker - marker;
         return gl.allele2(revMarker, sample);
+    }
+
+    @Override
+    public int allele(int marker, int hap) {
+        int revMarker = lastMarker - marker;
+        return gl.allele(revMarker, hap);
     }
 
     @Override
@@ -82,6 +97,11 @@ public final class RevGL implements GL {
     @Override
     public int nMarkers() {
         return gl.nMarkers();
+    }
+
+    @Override
+    public int nHaps() {
+        return gl.nHaps();
     }
 
     @Override

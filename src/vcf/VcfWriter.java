@@ -18,39 +18,41 @@
  */
 package vcf;
 
-import beagleutil.SampleIds;
 import blbutil.Const;
-import blbutil.FileUtil;
-import haplotype.HapPair;
-import haplotype.BasicSampleHapPairs;
-import haplotype.SampleHapPairs;
-import java.io.File;
 import java.io.PrintWriter;
+import java.math.BigDecimal;
+import java.math.MathContext;
 import java.text.DecimalFormat;
 import java.text.SimpleDateFormat;
 import java.util.Calendar;
-import java.util.List;
+import main.AlleleProbs;
 import main.GenotypeValues;
-import main.GprobsStatistics;
 
 /**
- * Class {@code VcfWriter} contains static methods for writing data in
- * VCF 4.1 format.
+ * <p>Class {@code VcfWriter} contains static methods for writing data in
+ * VCF 4.2 format.
+ * </p>
+ * <p>Instances of class {@code VcfWriter} are not thread-safe.
+ * </p>
  *
  * @author Brian L. Browning {@code <browning@uw.edu>}
  */
 public final class VcfWriter {
 
     private static final String PASS = "PASS";
+    private static final DecimalFormat df2 = new DecimalFormat("#.##");
     private static final DecimalFormat df3 = new DecimalFormat("#.###");
+    private static final DecimalFormat df2_fixed = new DecimalFormat("0.00");
+    private static final MathContext mathContext2 = new MathContext(2);
 
-    private static final String fileformat = "##fileformat=VCFv4.1";
+    private static final String fileformat = "##fileformat=VCFv4.2";
+
     private static final String afInfo = "##INFO=<ID=AF,Number=A,Type=Float,"
             + "Description=\"Estimated Allele Frequencies\">";
     private static final String ar2Info = "##INFO=<ID=AR2,Number=1,Type=Float,"
             + "Description=\"Allelic R-Squared: estimated correlation between "
             + "most probable ALT dose and true ALT dose\">";
-    private static final String dr2Info = "##INFO=<ID=DR2,Number=1,Type=Float,"
+    private static final String dr2Info = "##INFO=<ID=DR2,Number=A,Type=Float,"
             + "Description=\"Dosage R-Squared: estimated correlation between "
             + "estimated ALT dose [P(RA) + 2*P(AA)] and true ALT dose\">";
 
@@ -76,69 +78,18 @@ public final class VcfWriter {
     }
 
     /**
-     * Writes the specified data to the specified VCF file.
+     * Writes VCF meta-information lines and header line to the specified
+     * {@code PrintWriter}. Only one FORMAT subfield, the GT subfield,
+     * is described in the meta-information lines.
+     * @param sampleIds the sample identifiers
      * @param source a description of the data source, or {@code null} if
-     * no description is available.
-     * @param haps the sample haplotype pairs.
-     * @param vcfFile the file to which VCF output will be written.
-     * @throws NullPointerException if {@code haps==null || vcfFile==null}.
-     */
-    public static void write(String source, SampleHapPairs haps,
-            File vcfFile) {
-        try (PrintWriter out=FileUtil.bgzipPrintWriter(vcfFile)) {
-            writeMetaLinesGT(haps.samples().ids(), source, out);
-            appendRecords(haps, 0, haps.nMarkers(), out);
-        }
-    }
-
-    /**
-     * Writes the specified data to the specified VCF file.  This method
-     * permits an individual to have multiple haplotype pairs.
-     * @param source a description of the data source, or {@code null} if
-     * no description is available.
-     * @param hapPairList a list of haplotype pairs.
-     * @param vcfFile the file to which VCF output will be written.
-     * @throws NullPointerException if {@code haps==null || vcfFile==null}.
-     */
-    public static void write(String source, List<HapPair> hapPairList,
-            File vcfFile) {
-        try (PrintWriter out=FileUtil.bgzipPrintWriter(vcfFile)) {
-            String[] sampleIds = sampleIds(hapPairList);
-            Markers markers = BasicSampleHapPairs.checkAndExtractMarkers(hapPairList);
-            writeMetaLinesGT(sampleIds, source, out);
-            for (int j=0; j<markers.nMarkers(); ++j) {
-                printFixedFieldsGT(markers.marker(j), out);
-                for (int hp=0; hp<sampleIds.length; ++hp) {
-                    out.print(Const.tab);
-                    out.print(hapPairList.get(hp).allele1(j));
-                    out.print(Const.phasedSep);
-                    out.print(hapPairList.get(hp).allele2(j));
-                }
-                out.println();
-            }
-        }
-    }
-
-    private static String[] sampleIds(List<HapPair> hapPairList) {
-        String[] sa = new String[hapPairList.size()];
-        for (int j=0; j<sa.length; ++j) {
-            sa[j] = SampleIds.instance().id(hapPairList.get(j).idIndex());
-        }
-        return sa;
-    }
-
-    /**
-     * Writes VCF meta-information lines to the specified {@code PrintWriter}.
-     * The meta-information lines assume that the only FORMAT field is the GT
-     * field.
-     * @param sampleIds the sample identifiers.
-     * @param source a description of the data source, or {@code null} if
-     * no description is to be printed.
+     * no description is to be printed
      * @param out the {@code PrintWriter} to which VCF meta-information
-     * lines will be written.
-     * @throws NullPointerException if {@code sampleIds==null}, if
-     * {@code out==null}, or if {@code sampleIds[j]==null} for any
-     * {@code 0<=j<sampleIds.length}.
+     * lines will be written
+     * @throws NullPointerException if {@code out == null}
+     * @throws NullPointerException if
+     * {@code sampleIds == null}, or if {@code sampleIds[j] == null} for any
+     * {@code j} satisfying {@code (0 <= j && j < <sampleIds.length)}
      */
     public static void writeMetaLinesGT(String[] sampleIds, String source,
             PrintWriter out) {
@@ -149,21 +100,23 @@ public final class VcfWriter {
     }
 
     /**
-     * Writes VCF meta-information lines to the specified {@code PrintWriter}.
-     * @param sampleIds the sample identifiers.
+     * Writes VCF meta-information lines and header line to the specified
+     * {@code PrintWriter}.
+     * @param sampleIds the sample identifiers
      * @param source a description of the data source, or {@code null} if
-     * no description is to be printed.
-     * @param printGT {@code true} if there is a GT FORMAT field and
-     * {@code false} otherwise.
-     * @param printGP {@code true} if there is a GP FORMAT field and
-     * {@code false} otherwise.
-     * @param printGL {@code true} if there is a GL FORMAT field and
-     * {@code false} otherwise.
+     * no description is to be printed
+     * @param printGT {@code true} if the meta-information lines
+     * will describe the GT FORMAT subfield and {@code false} otherwise
+     * @param printGP {@code true} if the meta-information lines
+     * will describe the GP FORMAT subfield and {@code false} otherwise
+     * @param printGL {@code true} if the meta-information lines
+     * will describe the GL FORMAT subfield and {@code false} otherwise
      * @param out the {@code PrintWriter} to which VCF meta-information lines
      * will be written.
-     * @throws NullPointerException if {@code sampleIds==null}, if
-     * {@code out==null}, or if {@code sampleIds[j]==null} for any
-     * {@code 0<=j<sampleIds.length}.
+     * @throws NullPointerException if {@code out == null}
+     * @throws NullPointerException if
+     * {@code sampleIds == null}, or if {@code sampleIds[j] == null} for any
+     * {@code j} satisfying {@code (0 <= j && j < sampleIds.length)}
      */
     public static void writeMetaLines(String[] sampleIds, String source,
             boolean printGT, boolean printGP, boolean printGL, PrintWriter out) {
@@ -211,130 +164,148 @@ public final class VcfWriter {
     }
 
     /**
-     * Writes the specified haplotypes and posterior genotype
-     * probabilities as VCF records to the specified {@code PrintWriter}.
-     * @param haps the sample haplotype pairs.
-     * @param gv the scaled sample posterior genotype probabilities.
-     * @param start the starting marker index (inclusive).
-     * @param end the ending marker index (exclusive).
+     * Writes the specified genotype data  as VCF records to the specified
+     * {@code PrintWriter}.
+     * @param gv the scaled sample posterior genotype probabilities
+     * @param start the starting marker index (inclusive)
+     * @param end the ending marker index (exclusive)
      * @param out the {@code PrintWriter} to which VCF records will
      * be written.
      *
      * @throws IllegalArgumentException if
-     * {@code haps.markers().equals(gv.markers()==false}.
+     * {@code haps.markers().equals(gv.markers()) == false}
      * @throws IndexOutOfBoundsException if
-     * {@code start<0 || start>end || end>haps.nMarkers()}.
+     * {@code (start < 0 || start > end || end > haps.nMarkers())}
      * @throws NullPointerException if
-     * {@code haps==null || gv==null || out==null}.
+     * {@code (gv == null || out == null)}
      */
-    public static void appendRecords(SampleHapPairs haps,
-            GenotypeValues gv, int start, int end, PrintWriter out) {
+    public static void appendRecords(GenotypeValues gv, int start, int end,
+            PrintWriter out) {
         if (start > end) {
             throw new IllegalArgumentException("start=" + start + " end=" + end);
         }
-        if (haps.markers().equals(gv.markers())==false) {
-            throw new IllegalArgumentException("inconsistent markers");
-        }
-        float[] sumAndAltDose = new float[2];
         for (int marker=start; marker<end; ++marker) {
             printFixedFields(gv, marker, out);
-            for (int hp=0, n=haps.nSamples(); hp<n; ++hp) {
-                out.print(Const.tab);
-                out.print(haps.allele1(marker, hp));
-                out.print(Const.phasedSep);
-                out.print(haps.allele2(marker, hp));
-                int sampleIdIndex = haps.idIndex(hp);
-                int sampleIndex = gv.samples().index(sampleIdIndex);
-                if (sampleIndex < 0) {
-                    throw new IllegalArgumentException("inconsistent samples");
-                }
-                int nGenotypes = gv.marker(marker).nGenotypes();
-                sumAndAltDose(gv, marker, sampleIndex, sumAndAltDose);
-                float sum = sumAndAltDose[0];
-                float altDoseSum = sumAndAltDose[1];
-                if (sum==0.0f) {
-                    out.print(Const.colon);
-                    out.print(Const.MISSING_DATA_CHAR);
-                    out.print(Const.colon);
-                    out.print(Const.MISSING_DATA_CHAR);
-                }
-                else {
-                    out.print(Const.colon);
-                    out.print(df3.format(altDoseSum/sum));
-                    for (int gt=0; gt<nGenotypes; ++gt) {
-                        out.print(gt==0 ? Const.colon : Const.comma);
-                        double v = gv.value(marker, sampleIndex, gt)/sum;
-                        out.print(df3.format(v));
-                    }
-                }
+            for (int sample=0, n=gv.nSamples(); sample<n; ++sample) {
+                print_GT_DS_GP(gv, marker, sample, out);
             }
             out.println();
         }
     }
 
+
+    private static void print_GT_DS_GP(GenotypeValues gv, int marker, int sample,
+            PrintWriter out) {
+        int nAlleles = gv.marker(marker).nAlleles();
+        int nGenotypes = gv.marker(marker).nGenotypes();
+        float[] dose = new float[nAlleles];
+        int bestA1 = -1;
+        int bestA2 = -1;
+        int gt = 0;
+        float sum = 0f;
+        float maxGP = 0f;
+        for (int a2=0; a2<nAlleles; ++a2) {
+            for (int a1=0; a1<=a2; ++a1) {
+                float value = gv.value(marker, sample, gt++);
+                if (value > maxGP) {
+                    bestA1 = a1;
+                    bestA2 = a2;
+                    maxGP = value;
+                }
+                dose[a1] += value;
+                dose[a2] += value;
+                sum += value;
+            }
+        }
+        out.print(Const.tab);
+        out.print(bestA1 == -1 ? Const.MISSING_DATA_STRING : bestA1);
+        out.print(Const.unphasedSep);
+        out.print(bestA2 == -1 ? Const.MISSING_DATA_STRING : bestA2);
+        for (int al = 1; al < dose.length; ++al) {
+            out.print( (al==1) ? Const.colon : Const.comma);
+            out.print(df2.format(dose[al]/sum));
+        }
+        for (gt=0; gt<nGenotypes; ++gt) {
+            out.print(gt==0 ? Const.colon : Const.comma);
+            double v = gv.value(marker, sample, gt)/sum;
+            out.print(df2.format(v));
+        }
+    }
+
     /**
-     * Writes the specified haplotypes as VCF records to the specified
+     * Writes the specified genotype data as VCF records to the specified
      * {@code PrintWriter}.
-     * @param haps the sample haplotype pairs.
-     * @param start the starting marker index (inclusive).
-     * @param end the ending marker index (exclusive).
+     * @param alProbs the sample haplotype pairs
+     * @param start the starting marker index (inclusive)
+     * @param end the ending marker index (exclusive)
+     * @param r2 {@code true} if squared dosage correlation should be printed,
+     * and {@code false} otherwise
+     * @param gprobs {@code true} if the GP field should be printed, and
+     * {@code false} otherwise.
      * @param out the {@code PrintWriter} to which VCF records will
-     * be written.
+     * be written
      *
      * @throws IndexOutOfBoundsException if
-     * {@code start<0 || start>end || end>haps.nMarkers()}.
-     * @throws NullPointerException if
-     * {@code haps==null || out==null}.
+     * {@code (start < 0 || start > end || end > alProbs.nMarkers())}
+     * @throws NullPointerException if {@code haps == null || out == null}
      */
-    public static void appendRecords(SampleHapPairs haps,
-            int start, int end, PrintWriter out) {
+    public static void appendRecords(AlleleProbs alProbs, int start, int end,
+            boolean r2, boolean gprobs, PrintWriter out) {
         if (start > end) {
             throw new IllegalArgumentException("start=" + start + " end=" + end);
         }
         for (int marker=start; marker<end; ++marker) {
-            printFixedFieldsGT(haps.marker(marker), out);
-            for (int hp=0, n=haps.nSamples(); hp<n; ++hp) {
-                out.print(Const.tab);
-                out.print(haps.allele1(marker, hp));
-                out.print(Const.phasedSep);
-                out.print(haps.allele2(marker, hp));
+            printFixedFields(alProbs, marker, r2, gprobs, out);
+            for (int sample=0, n=alProbs.nSamples(); sample<n; ++sample) {
+                printGTandDose(alProbs, marker, sample, out);
+                if (gprobs) {
+                     printGP(alProbs, marker, sample, out);
+                }
             }
             out.println();
         }
     }
 
-
-    private static void sumAndAltDose(GenotypeValues gv,
-            int marker, int sample, float[] sumAndAltAlleleSum) {
-        float sum = 0.0f;
-        float altSum = 0.0f;
-        int nAlleles = gv.marker(marker).nAlleles();
-        int gt = 0;
-        for (int a2=0; a2<nAlleles; ++a2) {
-            for (int a1=0; a1<a2; ++a1) {
-                float f = gv.value(marker, sample, gt++);
-                sum += f;
-                altSum += (a1==0) ? f : (2.0f)*f;
-            }
-            float f = gv.value(marker, sample, gt++);
-            sum += f;
-            altSum += (a2==0) ? 0.0 : (2.0f)*f;
+    private static void printGTandDose(AlleleProbs alProbs, int marker, int
+            sample, PrintWriter out) {
+        out.print(Const.tab);
+        out.print(alProbs.allele1(marker, sample));
+        out.append(Const.phasedSep);
+        out.print(alProbs.allele2(marker, sample));
+        int nAlleles = alProbs.marker(marker).nAlleles();
+        for (int j = 1; j < nAlleles; ++j) {
+            float p1 = alProbs.alProb1(marker, sample, j);
+            float p2 = alProbs.alProb2(marker, sample, j);
+            out.print( (j==1) ? Const.colon : Const.comma );
+            out.print(df2.format(p1 + p2));
         }
-        assert gt==gv.marker(marker).nGenotypes();
-        sumAndAltAlleleSum[0] = sum;
-        sumAndAltAlleleSum[1] = altSum;
+    }
+
+    private static void printGP(AlleleProbs alProbs, int marker, int sample,
+            PrintWriter out) {
+        int nAlleles = alProbs.marker(marker).nAlleles();
+        for (int a2=0; a2<nAlleles; ++a2) {
+            for (int a1=0; a1<=a2; ++a1) {
+                out.print((a2 == 0 && a1 == 0) ? Const.colon : Const.comma);
+                float gtProb = alProbs.gtProb(marker, sample, a1, a2);
+                if (a1 != a2) {
+                    gtProb += alProbs.gtProb(marker, sample, a2, a1);
+                }
+                out.print(df2.format(gtProb));
+            }
+        }
     }
 
     /**
-     * Prints the fixed fields for the specified marker to the specified
-     * {@code PrintWriter}.  The fixed fields include only the GT FORMAT
-     * subfield.
+     * Prints the first 9 VCF record fields for the specified marker to
+     * the specified {@code PrintWriter}.  Only one VCF FORMAT subfield,
+     * the GT subfield, is printed.
      *
-     * @param marker the marker whose fixed fields will be written.
-     * @param out the {@code PrintWriter} to which VCF records will
-     * be written.
+     * @param marker a marker
+     * @param out the {@code PrintWriter} to which the first 9 VCF record
+     * fields will be written
      *
-     * @throws NullPointerException if {@code marker==null || out==null}.
+     * @throws NullPointerException if {@code marker == null || out == null}
      */
     public static void printFixedFieldsGT(Marker marker, PrintWriter out) {
         out.print(marker);
@@ -359,14 +330,44 @@ public final class VcfWriter {
         out.print(PASS);                    // FILTER
         out.print(Const.tab);
         out.print("AR2=");                  // INFO
-        out.print(df3.format(gpm.allelicR2()));
+        out.print(df2_fixed.format(gpm.allelicR2()));
         out.print(";DR2=");
-        out.print(df3.format(gpm.doseR2()));
+        out.print(df2_fixed.format(gpm.doseR2()));
         for (int j=1; j<alleleFreq.length; ++j) {
             out.print( (j==1) ? ";AF=" : Const.comma);
-            out.print(df3.format(alleleFreq[j]));
+            BigDecimal bd = new BigDecimal(alleleFreq[j]).round(mathContext2);
+            out.print(bd.doubleValue());
         }
         out.print(Const.tab);
         out.print("GT:DS:GP");
+    }
+
+    private static void printFixedFields(AlleleProbs alProbs,
+            int marker, boolean r2, boolean gprobs, PrintWriter out) {
+        GprobsStatistics gpm = new GprobsStatistics(alProbs, marker);
+        float[] alleleFreq = gpm.alleleFreq();
+        out.print(alProbs.marker(marker));
+        out.print(Const.tab);
+        out.print(Const.MISSING_DATA_CHAR); // QUAL
+        out.print(Const.tab);
+        out.print(PASS);                    // FILTER
+        if (r2) {
+            out.print(Const.tab);
+            out.print("AR2=");                  // INFO
+            out.print(df2_fixed.format(gpm.allelicR2()));
+            out.print(";DR2=");
+            out.print(df2_fixed.format(gpm.doseR2()));
+            for (int j=1; j<alleleFreq.length; ++j) {
+                out.print( (j==1) ? ";AF=" : Const.comma);
+                BigDecimal bd = new BigDecimal(alleleFreq[j]).round(mathContext2);
+                out.print(bd.doubleValue());
+            }
+        }
+        else {
+            out.print(Const.tab);
+            out.print(Const.MISSING_DATA_CHAR);
+        }
+        out.print(Const.tab);
+        out.print( gprobs ? "GT:DS:GP" : "GT:DS");
     }
 }

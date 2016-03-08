@@ -21,14 +21,14 @@ package dag;
 import blbutil.Const;
 import java.util.Arrays;
 import vcf.GL;
-import vcf.Marker;
 import vcf.Markers;
 
 /**
  * <p>Class {@code LinkageEquilibriumDag} represents a leveled DAG with one parent
  * node at each level.
  * </p>
- * Instances of class {@code LinkageEquilibriumDag} are immutable.
+ * <p>Instances of class {@code LinkageEquilibriumDag} are immutable.
+ * </p>
  *
  * @author Brian L. Browning {@code <browning@uw.edu>}
  */
@@ -36,7 +36,7 @@ public final class LinkageEquilibriumDag implements Dag {
 
     private final Markers markers;
     private final float[][] alleleFreq;
-    private final byte maxAlleles;
+    private final int maxAlleles;
     private final int sumAlleles;
 
     /**
@@ -45,24 +45,24 @@ public final class LinkageEquilibriumDag implements Dag {
      * one parent node per level, one edge per allele at each level,
      * and edge count equal to the estimated allele frequency.
      * @param gl the genotype emission probabilities which determine
-     * the estimated allele frequencies.
-     * @param minFreq the minimum allele frequency that will be used.
+     * the estimated allele frequencies
+     * @param minFreq the minimum allele frequency that will be used
      * @throws IllegalArgumentException if
-     * {@code minFreq<=0.0f || minFreq>=0.5f}.
-     * @throws NullPointerException if {@code gl==null}.
+     * {@code minFreq <= 0.0f || minFreq >= 0.5f || Float.isNaN(minFreq) == true}
+     * @throws NullPointerException if {@code gl == null}
      */
     public LinkageEquilibriumDag(GL gl, float minFreq) {
-        if (minFreq <= 0.0f || minFreq >= 0.5f) {
-            throw new IllegalArgumentException("minFreq: " + minFreq);
+        if (minFreq <= 0.0f || minFreq >= 0.5f || Float.isNaN(minFreq)) {
+            throw new IllegalArgumentException(String.valueOf(minFreq));
         }
         int nMarkers = gl.nMarkers();
-        byte localMaxAlleles = (byte) 0;
+        int localMaxAlleles = 0;
         this.markers = gl.markers();
         this.alleleFreq = new float[nMarkers][];
         for (int marker=0; marker<nMarkers; ++marker) {
             alleleFreq[marker] = alleleFrequencies(gl, marker, minFreq);
             if (alleleFreq[marker].length > localMaxAlleles) {
-                localMaxAlleles = (byte) alleleFreq[marker].length;
+                localMaxAlleles = alleleFreq[marker].length;
             }
         }
         this.maxAlleles = localMaxAlleles;
@@ -76,8 +76,8 @@ public final class LinkageEquilibriumDag implements Dag {
         float[] alleleFreq = new float[nAlleles];
         float[] scaledFreq = new float[nAlleles];
         for (int sample=0; sample<nSamples; ++sample) {
-            for (byte a1=0; a1<nAlleles; ++a1) {
-                for (byte a2=0; a2<nAlleles; ++a2) {
+            for (int a1=0; a1<nAlleles; ++a1) {
+                for (int a2=0; a2<nAlleles; ++a2) {
                     float likelihood = gl.gl(marker, sample, a1, a2);
                     scaledFreq[a1] += likelihood;
                     scaledFreq[a2] += likelihood;
@@ -166,18 +166,18 @@ public final class LinkageEquilibriumDag implements Dag {
     }
 
     @Override
-    public byte symbol(int level, int edge) {
+    public int symbol(int level, int edge) {
         checkEdge(level, edge);
-        return (byte) edge;
+        return edge;
     }
 
     @Override
-    public float edgeCnt(int level, int edge) {
+    public float edgeWeight(int level, int edge) {
         return alleleFreq[level][edge];
     }
 
     @Override
-    public float nodeCnt(int level, int parentNode) {
+    public float parentWeight(int level, int parentNode) {
         checkParentNode(level, parentNode);
         return 1.0f;
     }
@@ -193,24 +193,19 @@ public final class LinkageEquilibriumDag implements Dag {
     }
 
     @Override
-    public float nodeProb(int level, int node) {
+    public float parentProb(int level, int node) {
         checkParentNode(level, node);
         return 1.0f;
     }
 
     @Override
-    public int nMarkers() {
+    public int nLevels() {
         return alleleFreq.length;
     }
 
     @Override
     public Markers markers() {
         return markers;
-    }
-
-    @Override
-    public Marker marker(int marker) {
-        return markers.marker(marker);
     }
 
     @Override
@@ -246,7 +241,7 @@ public final class LinkageEquilibriumDag implements Dag {
     }
 
     @Override
-    public int outEdgeBySymbol(int level, int parentNode, byte symbol) {
+    public int outEdgeBySymbol(int level, int parentNode, int symbol) {
         return symbol;
     }
 
@@ -277,7 +272,7 @@ public final class LinkageEquilibriumDag implements Dag {
         double[] pos = new double[alleleFreq.length];
         for (int j=0; j<pos.length; ++j) {
             double condEdgeProb = 0.0;
-            for (int a=0; a<alleleFreq.length; ++a) {
+            for (int a=0; a<alleleFreq[j].length; ++a) {
                 condEdgeProb += alleleFreq[j][a]*alleleFreq[j][a];
             }
             if (j==0) {

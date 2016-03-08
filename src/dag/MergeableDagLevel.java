@@ -19,14 +19,17 @@
 package dag;
 
 import blbutil.Const;
-import haplotype.HapsMarker;
+import vcf.HapsMarker;
 import java.util.Arrays;
-import vcf.Marker;
 
 /**
- * Class {@code MergeableDagLevel} represents a level of a leveled
- * directed acyclic graph (DAG).  The class includes a public method for
+ * <p>Class {@code MergeableDagLevel} represents a level of a leveled
+ * directed acyclic graph (DAG). The class includes a public method for
  * merging parent nodes.
+ * </p>
+ * <p>
+ * Instances of class {@code MergebleDagLevel} are not thread-safe.
+ * </p>
  *
  * @author Brian L. Browning {@code <browning@uw.edu>}
  */
@@ -35,10 +38,10 @@ public class MergeableDagLevel {
     private MergeableDagLevel nextLevel = null;
     private MergeableDagLevel prevLevel = null;
 
-    private final Marker marker;
-    private final int markerIndex;
+    private final int levelIndex;
     private final int nAlleles;
     private final int nHaps;
+    private final float[] weights;
 
     private int[][] outEdges;  // [allele][parent node]
     private int[] child2FirstInEdge;
@@ -46,64 +49,77 @@ public class MergeableDagLevel {
 
     private int[] parentNodes;    // edge -> parent node
     private int[] childNodes;     // edge -> child node
-    private byte[] symbols;       // edge -> symbol
+    private int[] symbols;        // edge -> symbol
     private float[] counts;       // edge -> weight
 
     private int[] child2FirstHap; // child node -> first hap index
-    private int[] hap2NextHap;   // current hap index -> next hap index
+    private int[] hap2NextHap;    // current hap index -> next hap index
+
+    private static float[] defaultWeights(HapsMarker data) {
+        float[] fa = new float[data.nHaps()];
+        Arrays.fill(fa, 1f);
+        return fa;
+    }
+
+    /**
+     * Constructs a new {@code MergeableDagLevel} instance from the specified
+     * phased genotype data.  The {@code previous()} method of the
+     * constructed instance will return {@code null}. Each haplotype
+     * will be assigned a weight of 1.
+     * @param data the phased genotype data
+     * @throws NullPointerException if {@code data == null}
+     */
+    public MergeableDagLevel(HapsMarker data) {
+        this(data, defaultWeights(data));
+    }
 
     /**
      * Constructs a new {@code MergeableDagLevel} instance from the specified
      * phased genotype data and haplotype weights.  The {@code previous()}
      * method of the constructed instance will return {@code null}.
-     * @param data the phased genotype data.
+     * @param data the phased genotype data
      * @param weights an array mapping haplotype indices to non-negative
-     * weights.
-     *
-     * @throws IllegalArgumentException if {@code weights.length!=data.nHaps()}
+     * weights
+     * @throws IllegalArgumentException if
+     * {@code weights.length != data.nHaps()}
      * @throws NullPointerException if {@code data==null || weights==null}
      */
     public MergeableDagLevel(HapsMarker data, float[] weights) {
         checkParameters(data, weights);
-        boolean isRootLevel = true;
         this.prevLevel = null;
         this.nextLevel = null;
-        this.marker = data.marker();
-        this.markerIndex = 0;
+        this.levelIndex = 0;
         this.nAlleles = data.marker().nAlleles();
         this.nHaps = data.nHaps();
-        allocateAndInitializeArrays(isRootLevel, nAlleles, nHaps);
+        this.weights = weights.clone();
+        allocateAndInitializeArrays(nAlleles, nHaps);
         fillArrays(data, weights);
     }
 
     /**
      * Constructs a new {@code MergeableDagLevel} instance with the
-     * specified previous {@code MergeableDagLevel}, phased genotype data,
-     * and haplotype weights.  This constructor does not alter any field
-     * of the specified {@code prevLevel} object.
-     * @param prevLevel the previous {@code MergeableDagLevel}.
-     * @param data the phased genotype data.
-     * @param weights an array mapping haplotype indices to non-negative
-     * weights.
+     * specified previous {@code MergeableDagLevel} and the
+     * specified phased genotype data.  This constructor does not alter
+     * any field of the specified {@code prevLevel} object.
+     * @param prevLevel the previous {@code MergeableDagLevel}
+     * @param data the phased genotype data
      *
-     * @throws IllegalArgumentException
-     *   if {@code weights.length!= data.nHaps()}
-     * @throws IllegalArgumentException if {@code prevLevel.nextLevel()!=null}
-     * @throws IllegalArgumentException if {@code parent.nHaps()!=data.nHaps()}
+     * @throws IllegalArgumentException if
+     * {@code prevLevel.nextLevel() != null}
+     * @throws IllegalArgumentException if
+     * {@code parent.nHaps() != data.nHaps()}
      * @throws NullPointerException if
-     * {@code parent==null || data==null || weights==null}
+     * {@code parent == null || data == null}
      */
-    public MergeableDagLevel(MergeableDagLevel prevLevel, HapsMarker data,
-            float[] weights) {
-        checkParameters(prevLevel, data, weights);
-        boolean isRootLevel = false;
+    public MergeableDagLevel(MergeableDagLevel prevLevel, HapsMarker data) {
+        checkParameters(prevLevel, data);
         this.prevLevel = prevLevel;
         this.nextLevel = null;
-        this.marker = data.marker();
-        this.markerIndex = prevLevel.markerIndex() + 1;
+        this.levelIndex = prevLevel.index() + 1;
         this.nAlleles = data.marker().nAlleles();
         this.nHaps = data.nHaps();
-        allocateAndInitializeArrays(isRootLevel, nAlleles, nHaps);
+        this.weights = prevLevel.weights;
+        allocateAndInitializeArrays(nAlleles, nHaps);
         fillArrays(prevLevel, data, weights);
     }
 
@@ -115,9 +131,7 @@ public class MergeableDagLevel {
         }
     }
 
-    private void checkParameters(MergeableDagLevel parent, HapsMarker data,
-            float[] weights) {
-        checkParameters(data, weights);
+    private void checkParameters(MergeableDagLevel parent, HapsMarker data) {
         if (parent.nextLevel!=null) {
             throw new IllegalArgumentException("parent.nextLevel!=null");
         }
@@ -127,16 +141,14 @@ public class MergeableDagLevel {
         // NB: the sequences of sample ID indices are not checked
     }
 
-    private void allocateAndInitializeArrays(boolean isRootLevel, int nAlleles,
-            int nHaps) {
-        int size = isRootLevel ? nAlleles : nHaps;
-        this.outEdges = new int[nAlleles][size];
-        this.child2FirstInEdge = new int[size];
-        this.inEdge2NextInEdge = new int[size];
-        this.parentNodes = new int[size];
-        this.childNodes = new int[size];
-        this.symbols = new byte[size];
-        this.counts = new float[size];
+    private void allocateAndInitializeArrays(int nAlleles, int nHaps) {
+        this.outEdges = new int[nAlleles][nHaps];
+        this.child2FirstInEdge = new int[nHaps];
+        this.inEdge2NextInEdge = new int[nHaps];
+        this.parentNodes = new int[nHaps];
+        this.childNodes = new int[nHaps];
+        this.symbols = new int[nHaps];
+        this.counts = new float[nHaps];
         this.child2FirstHap = new int[nHaps];
         this.hap2NextHap = new int[nHaps];
 
@@ -147,7 +159,7 @@ public class MergeableDagLevel {
         Arrays.fill(inEdge2NextInEdge, -1);
         Arrays.fill(parentNodes, -1);
         Arrays.fill(childNodes, -1);
-        Arrays.fill(symbols, (byte) -1);
+        Arrays.fill(symbols, -1);
         Arrays.fill(child2FirstHap, -1);
         Arrays.fill(hap2NextHap, -1);
     }
@@ -155,7 +167,7 @@ public class MergeableDagLevel {
     private void fillArrays(HapsMarker data, float[] weights) {
         int parentNode = 0;
         for (int hap=0, n=data.nHaps(); hap<n; ++hap) {
-            byte symbol = data.allele(hap);
+            int symbol = data.allele(hap);
             float count = weights[hap];
             int edge = this.outEdges[symbol][parentNode];
             if (edge == -1) {
@@ -180,7 +192,7 @@ public class MergeableDagLevel {
             if (prevLevel.child2FirstHap[node] >= 0) {
                 int hap = prevLevel.child2FirstHap[node];
                 while (hap != -1) {
-                    byte symbol = data.allele(hap);
+                    int symbol = data.allele(hap);
                     float count = weights[hap];
                     int edge = this.outEdges[symbol][node];
                     if (edge == -1) {
@@ -203,7 +215,7 @@ public class MergeableDagLevel {
         prevLevel.removeHaplotypeIndices();
     }
 
-    private void addEdge(int parentNode, byte symbol, float weight,
+    private void addEdge(int parentNode, int symbol, float weight,
             int edge, int haplotype) {
         int childNode = edge;
         outEdges[symbol][parentNode] = edge;
@@ -247,9 +259,9 @@ public class MergeableDagLevel {
 
     /**
      * Sets the next level to the specified {@code MergeableDagLevel}.
-     * @param nextLevel the next level.
+     * @param nextLevel the next level
      * @throws IllegalArgumentException if
-     * {@code nextLevel.previousLevel()!=this}
+     * {@code nextLevel.previousLevel() != this}
      */
     public void setNextLevel(MergeableDagLevel nextLevel) {
         if (nextLevel.prevLevel != this) {
@@ -259,16 +271,17 @@ public class MergeableDagLevel {
     }
 
     /**
-     * Returns the previous DAG level.
-     * @return the previous DAG level.
+     * Returns the previous DAG level or {@code null} if no previous level
+     * is stored.
+     * @return the previous DAG level
      */
     public MergeableDagLevel previous() {
         return prevLevel;
     }
 
     /**
-     * Returns the next DAG level.
-     * @return the next DAG level.
+     * Returns the next DAG level or {@code null} if no next level is stored.
+     * @return the next DAG level
      */
     public MergeableDagLevel next() {
         return nextLevel;
@@ -280,9 +293,9 @@ public class MergeableDagLevel {
      * Two parent nodes are siblings if they are connected by an
      * edge to the same parent node at the previous level of the DAG.
      *
-     * @param parentNode a parent node index.
+     * @param parentNode a parent node index
      * @return {@code true} if the specified parent node has a
-     * sibling  and returns {@code false} otherwise.
+     * sibling
      */
     public boolean hasSibling(int parentNode) {
         int edge = prevLevel.child2FirstInEdge[parentNode];
@@ -308,18 +321,37 @@ public class MergeableDagLevel {
      * in the returned {@code DagLevel} are the ranks of the
      * parent node, edge, and child node indices for {@code this},
      * with rank 0 corresponding to the smallest index.
-     * @return an immutable {@code DagLevel} corresponding to
-     * {@code this}.
+     * @return an immutable {@code DagLevel} corresponding to {@code this}
      */
     public DagLevel toDagLevel() {
-         char[] modParentNodes = rankValues(
-                DagUtils.removeValues(parentNodes, -1));
-         char[] modChildNodes = rankValues(
-                DagUtils.removeValues(childNodes, -1));
-         byte[] modSymbols = DagUtils.removeValues(symbols, (byte) -1);
-         float[] modCounts = DagUtils.removeValues(counts, 0.0f);
-         return new ImmutableDagLevel(marker, modParentNodes, modChildNodes,
-                 modSymbols, modCounts);
+        float[] modCounts = DagUtil.removeValues(counts, 0f);
+        int[] modSymbols = DagUtil.removeValues(symbols, -1);
+        int[] modParentNodes = DagUtil.removeValues(parentNodes, -1);
+        int[] modChildNodes = DagUtil.removeValues(childNodes, -1);
+        if (modCounts.length<=Character.MAX_VALUE) {
+            char[] mod2Symbols = toCharArray(modSymbols);
+            char[] mod2ParentNodes = rankedCharValues(modParentNodes);
+            char[] mod2ChildNodes = rankedCharValues(modChildNodes);
+            return new LowCapacityDagLevel(mod2ParentNodes, mod2ChildNodes,
+                    mod2Symbols, modCounts);
+        }
+        else {
+            int[] mod2ParentNodes = rankedIntValues(modParentNodes);
+            int[] mod2ChildNodes = rankedIntValues(modChildNodes);
+            return new HighCapacityDagLevel(mod2ParentNodes, mod2ChildNodes,
+                    modSymbols, modCounts);
+        }
+    }
+
+    private static char[] toCharArray(int[] ia) {
+        char[] ca = new char[ia.length];
+        for (int j=0; j < ca.length; ++j) {
+            if (ia[j] < 0 || ia[j] > Character.MAX_VALUE) {
+                throw new IllegalArgumentException(String.valueOf(ia[j]));
+            }
+            ca[j] = (char) ia[j];
+        }
+        return ca;
     }
 
     /*
@@ -327,35 +359,71 @@ public class MergeableDagLevel {
      * rank when the set of array values is ordered: the smallest value
      * is replaced by 0, the next smallest value is replaced by 1, etc.
      *
-     * @throws NullPointerException if {@code array==null}
-     * @throws IllegalArgumentException if {@code array==null}
-     * @throws IllegalArgumentException if any element of array
-     * is negative.
-     * @throws NegativeArrayException if any element of array equals
-     * {@code Integer.MAX_VALUE}.
+     * @throws IllegalArgumentException if {@code array.length == 0}
+     * @throws IllegalArgumentException if any element of the array
+     * is negative
+     * @throws IllegalArgumentException if the array has more than
+     * {@code Character.MAX_VALUE + 1} distinct values
+     * @throws NullPointerException if {@code array == null}
      */
-    private static char[] rankValues(int[] array) {
+    private static char[] rankedCharValues(int[] array) {
         if (array.length==0) {
             throw new IllegalArgumentException("array.length==0");
         }
-        assert array.length < Character.MAX_VALUE;
         int[] sortedCopy = array.clone();
         Arrays.sort(sortedCopy);
         if (sortedCopy[0] < 0) {
-            String s = "element<0: " + sortedCopy[0];
-            throw new IllegalArgumentException(s);
+            throw new IllegalArgumentException(String.valueOf(sortedCopy[0]));
         }
         int n = sortedCopy[sortedCopy.length - 1] + 1;
-        char[] indexMap = new char[n];
-        Arrays.fill(indexMap, Character.MAX_VALUE);
-        char index = 0;
+        int[] indexMap = new int[n];
+        int index = 0;
         indexMap[sortedCopy[0]] = index++;
         for (int j=1; j<sortedCopy.length; ++j) {
             if (sortedCopy[j] != sortedCopy[j-1]) {
                 indexMap[sortedCopy[j]] = index++;
             }
         }
+        if ( (index - 1) >= Character.MAX_VALUE) {
+            String s = "Array has more than (Character.MAX_VALUE + 1) values";
+            throw new IllegalArgumentException(s);
+        }
         char[] transformedArray = new char[array.length];
+        for (int j=0; j<transformedArray.length; ++j) {
+            transformedArray[j] = (char) indexMap[array[j]];
+        }
+        return transformedArray;
+    }
+
+    /*
+     * Returns an array obtained by replacing each array value with it's
+     * rank when the set of array values is ordered: the smallest value
+     * is replaced by 0, the next smallest value is replaced by 1, etc.
+     *
+     * @throws IllegalArgumentException if {@code array.length == 0}
+     * @throws IllegalArgumentException if any element of the array
+     * is negative
+     * @throws NullPointerException if {@code array == null}
+     */
+    private static int[] rankedIntValues(int[] array) {
+        if (array.length==0) {
+            throw new IllegalArgumentException("array.length==0");
+        }
+        int[] sortedCopy = array.clone();
+        Arrays.sort(sortedCopy);
+        if (sortedCopy[0] < 0) {
+            throw new IllegalArgumentException(String.valueOf(sortedCopy[0]));
+        }
+        int n = sortedCopy[sortedCopy.length - 1] + 1;
+        int[] indexMap = new int[n];
+        int index = 0;
+        indexMap[sortedCopy[0]] = index++;
+        for (int j=1; j<sortedCopy.length; ++j) {
+            if (sortedCopy[j] != sortedCopy[j-1]) {
+                indexMap[sortedCopy[j]] = index++;
+            }
+        }
+        int[] transformedArray = new int[array.length];
         for (int j=0; j<transformedArray.length; ++j) {
             transformedArray[j] = indexMap[array[j]];
         }
@@ -363,11 +431,11 @@ public class MergeableDagLevel {
     }
 
     /**
-     * Merges the two specified parent nodes and assigns the merged
-     * node to the specified {@code retainedNode} index.
+     * Merges the two specified parent nodes and assigns the specified
+     * {@code retainedNode} index to the merged node.
      *
      * @param retainedNode a parent node which will receive ingoing and
-     * outgoing edges of {@code removedNode}.
+     * outgoing edges of {@code removedNode}
      * @param removedNode a parent node that will be deleted after merging.
      *
      * @throws IllegalArgumentException if {@code retainedNode}
@@ -387,7 +455,7 @@ public class MergeableDagLevel {
     }
 
     private void mergeParentNodes2(int retainedNode, int removedNode) {
-        for (byte j=0; j<nAlleles; ++j) {
+        for (int j=0; j<nAlleles; ++j) {
             int retainedEdge = outEdges[j][retainedNode];
             int removedEdge = outEdges[j][removedNode];
             if (removedEdge >= 0) {
@@ -413,8 +481,8 @@ public class MergeableDagLevel {
      * to {@code retainedNode}.
      *
      * @param retainedNode a child node which will receive ingoing edges of
-     * {@code removedNode}.
-     * @param removedNode a child node that will be deleted after merging.
+     * {@code removedNode}
+     * @param removedNode a child node that will be deleted after merging
      */
     private void mergeChildNodes(int retainedNode, int removedNode) {
         int lastEdge = -1;
@@ -434,7 +502,7 @@ public class MergeableDagLevel {
 
     private void changeParent(int edge, int newParent) {
         int oldParent = parentNodes[edge];
-        byte symbol = symbols[edge];
+        int symbol = symbols[edge];
         assert (outEdges[symbol][oldParent] == edge);
         assert (outEdges[symbol][newParent] == -1);
         outEdges[symbol][oldParent] = -1;
@@ -451,7 +519,7 @@ public class MergeableDagLevel {
         }
         int parentNode = parentNodes[removedEdge];
         int childNode = childNodes[removedEdge];
-        byte symbol = symbols[removedEdge];
+        int symbol = symbols[removedEdge];
         assert inEdge2NextInEdge[child2FirstInEdge[childNode]] == -1;
         outEdges[symbol][parentNode] = -1;
         child2FirstInEdge[childNode] = -1;
@@ -472,24 +540,16 @@ public class MergeableDagLevel {
     }
 
     /**
-     * Returns the marker.
-     * @return the marker.
-     */
-    public Marker marker() {
-        return marker;
-    }
-
-    /**
      * Returns the marker index.
-     * @return the marker index.
+     * @return the marker index
      */
-    public int markerIndex() {
-        return this.markerIndex;
+    public int index() {
+        return this.levelIndex;
     }
 
     /**
      * Returns the number of sequences used to construct the DAG.
-     * @return the number of sequences used to construct the DAG.
+     * @return the number of sequences used to construct the DAG
      */
     public int nHaps() {
         return this.nHaps;
@@ -498,7 +558,7 @@ public class MergeableDagLevel {
     /**
      * Returns the number of alleles.
      *
-     * @return the number of alleles.
+     * @return the number of alleles
      */
     public int nAlleles() {
         return this.nAlleles;
@@ -506,14 +566,14 @@ public class MergeableDagLevel {
 
    /**
     * Returns the sum of weights for the sequences that pass
-    * through the specified edge or 0.0f if the edge does not exist.
+    * through the specified edge or 0 if the edge does not exist.
     *
-    * @param edge index of the edge.
+    * @param edge index of the edge
     * @return sum of weights for the sequences that pass
-    * through the specified edge or 0.0f if the edge does not exist.
+    * through the specified edge or 0 if the edge does not exist
     *
     * @throws IndexOutOfBoundsException if
-    * {@code edge<0 || edge>=this.nHaps()}
+    * {@code edge < 0 || edge >= this.nHaps()}
     */
     public float edgeCount(int edge) {
         return counts[edge];
@@ -521,16 +581,16 @@ public class MergeableDagLevel {
 
    /**
     * Returns the sum of weights for the sequences that pass
-    * through the specified parent node or 0.0f if the parent node
+    * through the specified parent node or 0 if the parent node
     * does not exist.
     *
-    * @param parentNode index of the parent node.
-    * @return sum of weights for the sequences  that pass
-    * through the specified parent node or 0.0f if the parent node
-    * does not exist.
+    * @param parentNode index of the parent node
+    * @return sum of weights for the sequences that pass
+    * through the specified parent node or 0 if the parent node
+    * does not exist
     *
     * @throws IndexOutOfBoundsException if
-    * {@code parentNode<0 || parentNode>=this.nHaps()}    *
+    * {@code parentNode < 0 || parentNode >= this.nHaps()}
     */
     public float nodeCount(int parentNode) {
         float sum = 0.0f;
@@ -544,10 +604,10 @@ public class MergeableDagLevel {
 
     /**
      * Returns an array of parent node indices.
-     * @return an array of parent node indices.
+     * @return an array of parent node indices
      */
     public int[] parentNodeArray() {
-        int[] sortedReducedArray = DagUtils.removeValues(parentNodes, -1);
+        int[] sortedReducedArray = DagUtil.removeValues(parentNodes, -1);
         Arrays.sort(sortedReducedArray);
         assert sortedReducedArray.length > 0;
         int cnt = 1;
@@ -569,49 +629,50 @@ public class MergeableDagLevel {
     }
 
    /**
-     * Returns the parent node of the specified
-     * edge or -1 if edge does not exist.
+     * Returns the parent node of the specified edge or -1 if the edge does
+     * not exist.
      *
      * @param edge index of the edge
-     * @return the parent node of the specified
-     * edge or -1 if edge does not exist.
+     * @return the parent node of the specified edge or -1 if the edge does
+     * not exist
      *
      * @throws IndexOutOfBoundsException if
-     * {@code edge<0 || edge>=this.nHaps()}
+     * {@code edge < 0 || edge >= this.nHaps()}
      */
     public int parentNode(int edge) {
         return parentNodes[edge];
     }
 
     /**
-     * Returns the child node of the specified
-     * edge or -1 if the edge does not exist.
+     * Returns the child node of the specified edge or -1 if the edge does
+     * not exist
      *
      * @param edge the edge
-     * @return the child node of the specified
-     * edge or -1 if the edge does not exist.
+     * @return the child node of the specified edge or -1 if the edge does
+     * not exist
      *
      * @throws IndexOutOfBoundsException if
-     * {@code edge<0 || edge>=this.Haplotypes()}
+     * {@code edge < 0 || edge >= this.Haplotypes()}
      */
     public int childNode(int edge) {
         return childNodes[edge];
     }
 
     /**
-     * Returns the outgoing edge of the specified
-     * parent parent node that has the specified symbol, or returns
-     * -1 if no such edge exists.
+     * Returns the edge that is the outgoing edge of the specified
+     * parent parent node having the specified symbol, or
+     * returns -1 if no such edge exists.
      *
-     * @param parentNode the parent node.
-     * @param symbol symbol labeling the outgoing edge.
-     * @return the outgoing edge of the specified
-     * parent parent node that has the specified symbol, or
+     * @param parentNode the parent node
+     * @param symbol symbol labeling the outgoing edge
+     * @return the edge that is the outgoing edge of the specified
+     * parent parent node having the specified symbol, or
      * -1 if no such edge exists.
      *
      * @throws IndexOutOfBoundsException if
-     * {@code parentNode<0 || parentNode>=this.nHaps()}
-     * or if {@code symbol<0 || symbol>=this.nAlleles()}.
+     * {@code parentNode < 0 || parentNode >= this.nHaps()}
+     * @throws IndexOutOfBoundsException if
+     * {@code symbol < 0 || symbol >= this.nAlleles()}
      */
     public int outEdge(int parentNode, int symbol) {
         return outEdges[symbol][parentNode];
@@ -621,14 +682,14 @@ public class MergeableDagLevel {
      * Returns a string representation of {@code this}.  The exact
      * details of the representation are unspecified and subject to change.
      *
-     * @return a string representation of {@code this}.
+     * @return a string representation of {@code this}
      */
     @Override
     public String toString() {
         StringBuilder sb = new StringBuilder(1000);
         sb.append(Const.nl);
         sb.append("[ MergeableDagLevel: marker=");
-        sb.append(markerIndex);
+        sb.append(levelIndex);
         sb.append(Const.nl);
         for (int j=0, n=nHaps(); j<n; ++j) {
             if (parentNodes[j] != -1) {

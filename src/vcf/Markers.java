@@ -29,76 +29,100 @@ import java.util.Set;
  * </p>
  * <p>Instances of class {@code Markers} are immutable.
  * </p>
- *
  * @author Brian L. Browning {@code <browning@uw.edu>}
  */
 public final class Markers {
 
     private final Set<Marker> markerSet;
 
-    private final Marker[] fwdMarkers;
+    private final Marker[] fwdMarkerArray;
     private final int[] fwdSumAlleles;
     private final int[] fwdSumGenotypes;
     private final int[] fwdSumHaplotypeBits;
     private final int fwdHashCode;
 
-    private final Marker[] bwdMarkers;
+    private final Marker[] bwdMarkerArray;
     private final int[] bwdSumAlleles;
     private final int[] bwdSumGenotypes;
     private final int[] bwdSumHaplotypeBits;
     private final int bwdHashCode;
+    private final Markers bwdMarkers;
+
+    /**
+     * Construct and return a new {@code Markers} instance that represents the
+     * specified list of markers.
+     * @param markers a list of markers in chromosome order
+     * @return a new {@code Markers} instance that represents the
+     * specified list of markers
+     *
+     * @throws IllegalArgumentException if markers on a chromosome are not
+     * in chromosome order
+     * @throws IllegalArgumentException if there are duplicate markers
+     * @throws IllegalArgumentException if the markers on a chromosome
+     * do not form a contiguous set of entries within the array
+     *
+     * @throws NullPointerException if
+     * {@code markers == null} or if {@code markers[j] == null}
+     * for any {@code j} satisfying {@code (0 <= j && j < markers.length)}
+     */
+    public static Markers create(Marker[] markers) {
+        Markers fwd = new Markers(markers);
+        return new Markers(fwd.reverse());
+    }
 
     /**
      * Construct a new {@code Markers} instance that represents the
      * specified list of markers.
-     * @param markers a list of markers in chromosome order.
+     * @param markers a list of markers in chromosome order
      *
      * @throws IllegalArgumentException if markers on a chromosome are not
-     * in chromosome order.
-     * @throws IllegalArgumentException if there are duplicate markers.
+     * in chromosome order
+     * @throws IllegalArgumentException if there are duplicate markers
      * @throws IllegalArgumentException if the markers on a chromosome
-     * do not form a contiguous set of entries within the array.
+     * do not form a contiguous set of entries within the array
      *
      * @throws NullPointerException if
-     * {@code markers==null || markers[j]==null} for any
-     * {@code 0<=j<markers.length}.
+     * {@code markers == null} or if {@code markers[j] == null}
+     * for any {@code j} satisfying {@code (0 <= j && j < markers.length)}
      */
-    public Markers(Marker[] markers) {
+    private Markers(Marker[] markers) {
         checkMarkerPosOrder(markers);
-        this.fwdMarkers = markers.clone();
-        this.bwdMarkers = reverse(this.fwdMarkers);
-        this.markerSet = markerSet(fwdMarkers);
+        this.fwdMarkerArray = markers.clone();
+        this.bwdMarkerArray = reverse(this.fwdMarkerArray);
+        this.markerSet = markerSet(fwdMarkerArray);
 
-        this.fwdSumAlleles = cumSumAlleles(fwdMarkers);
-        this.fwdSumGenotypes = cumSumGenotypes(fwdMarkers);
-        this.fwdSumHaplotypeBits = cumSumHaplotypeBits(fwdMarkers);
-        this.fwdHashCode = Arrays.deepHashCode(fwdMarkers);
+        this.fwdSumAlleles = cumSumAlleles(fwdMarkerArray);
+        this.fwdSumGenotypes = cumSumGenotypes(fwdMarkerArray);
+        this.fwdSumHaplotypeBits = cumSumHaplotypeBits(fwdMarkerArray);
+        this.fwdHashCode = Arrays.deepHashCode(fwdMarkerArray);
 
-        this.bwdSumAlleles = cumSumAlleles(bwdMarkers);
-        this.bwdSumGenotypes = cumSumGenotypes(bwdMarkers);
-        this.bwdSumHaplotypeBits = cumSumHaplotypeBits(bwdMarkers);
-        this.bwdHashCode = Arrays.deepHashCode(bwdMarkers);
+        this.bwdSumAlleles = cumSumAlleles(bwdMarkerArray);
+        this.bwdSumGenotypes = cumSumGenotypes(bwdMarkerArray);
+        this.bwdSumHaplotypeBits = cumSumHaplotypeBits(bwdMarkerArray);
+        this.bwdHashCode = Arrays.deepHashCode(bwdMarkerArray);
+        this.bwdMarkers = null;
     }
 
-    /*
-     * Constructs a new {@code Markers} instance that has the same
-     * markers as the specified {@code Markers} object, but with
-     * order reversed.
+    /**
+     * Constructs a new {@code Markers} instance whose {@code reverse()}
+     * method returns the specified {@code Markers}
+     * @param bwdMarkers a list of markers
      */
-    private Markers(Markers markers) {
-        this.markerSet = markers.markerSet;
-        this.fwdMarkers = markers.bwdMarkers;
-        this.bwdMarkers = markers.fwdMarkers;
+    private Markers(Markers bwdMarkers) {
+        this.markerSet = bwdMarkers.markerSet;
+        this.fwdMarkerArray = bwdMarkers.bwdMarkerArray;
+        this.bwdMarkerArray = bwdMarkers.fwdMarkerArray;
 
-        this.fwdSumAlleles = markers.bwdSumAlleles;
-        this.fwdSumGenotypes = markers.bwdSumGenotypes;
-        this.fwdSumHaplotypeBits = markers.bwdSumHaplotypeBits;
-        this.fwdHashCode = markers.bwdHashCode;
+        this.fwdSumAlleles = bwdMarkers.bwdSumAlleles;
+        this.fwdSumGenotypes = bwdMarkers.bwdSumGenotypes;
+        this.fwdSumHaplotypeBits = bwdMarkers.bwdSumHaplotypeBits;
+        this.fwdHashCode = bwdMarkers.bwdHashCode;
 
-        this.bwdSumAlleles = markers.fwdSumAlleles;
-        this.bwdSumGenotypes = markers.fwdSumGenotypes;
-        this.bwdSumHaplotypeBits = markers.fwdSumHaplotypeBits;
-        this.bwdHashCode = markers.fwdHashCode;
+        this.bwdSumAlleles = bwdMarkers.fwdSumAlleles;
+        this.bwdSumGenotypes = bwdMarkers.fwdSumGenotypes;
+        this.bwdSumHaplotypeBits = bwdMarkers.fwdSumHaplotypeBits;
+        this.bwdHashCode = bwdMarkers.fwdHashCode;
+        this.bwdMarkers = bwdMarkers;
     }
 
     private static void checkMarkerPosOrder(Marker[] markers) {
@@ -183,7 +207,9 @@ public final class Markers {
 
     /**
      * Returns a hash code value for the object.
-     * @return a hash code value for the object.
+     * The returned hash code equals
+     * {@code Arrays.deepHashCode(this.markers())}.
+     * @return a hash code value for the object
      */
     @Override
     public int hashCode() {
@@ -191,16 +217,16 @@ public final class Markers {
     }
 
     /**
-     * Returns {@code true} if {@code this} and the specified object
-     * represent an identical list of markers, and returns
-     * {@code false} otherwise.  Markers are considered equal if
-     * the {@code Marker.equals()} method returns {@code true}.
+     * Returns {@code true} if the specified object is a {@code Markers}
+     * instance which represents the same list of markers as {@code this},
+     * and returns {@code false} otherwise. Two lists of markers are
+     * the same if the lists have the same size and if markers with the
+     * same index in the two lists are equal.
      *
-     * @param obj the object to be tested for equality with {@code this}.
+     * @param obj the object to be tested for equality with {@code this}
      *
-     * @return {@code true} if {@code this} and the specified object
-     * represent an identical list of markers, and returns
-     * {@code false} otherwise.
+     * @return {@code true} if the specified object is a {@code Markers}
+     * instance which represents the same list of markers as {@code this}
      */
     @Override
     public boolean equals(Object obj) {
@@ -214,57 +240,55 @@ public final class Markers {
             return false;
         }
         final Markers other = (Markers) obj;
-        return Arrays.deepEquals(this.fwdMarkers, other.fwdMarkers);
+        return Arrays.deepEquals(this.fwdMarkerArray, other.fwdMarkerArray);
     }
 
     /**
      * Constructs and returns a new {@code Markers} instance that is
      * obtained by reversing the order of markers in {@code this}.
      * @return a new {@code Markers} instance that is obtained by
-     * reversing the order of markers in {@code this}.
+     * reversing the order of markers in {@code this}
      */
     public Markers reverse() {
-        return new Markers(this);
+        return bwdMarkers==null ? new Markers(this) : bwdMarkers;
     }
 
     /**
      * Returns the number of markers.
-     * @return the number of markers.
+     * @return the number of markers
      */
     public int nMarkers() {
-        return fwdMarkers.length;
+        return fwdMarkerArray.length;
     }
 
     /**
      * Returns the specified marker.
-     * @param marker a marker index.
-     * @return the specified marker.
+     * @param marker a marker index
+     * @return the specified marker
      * @throws IndexOutOfBoundsException if
-     * {@code marker < 0 || marker >= this.nMarkers()}.
+     * {@code marker < 0 || marker >= this.nMarkers()}
      */
     public Marker marker(int marker) {
-        return fwdMarkers[marker];
+        return fwdMarkerArray[marker];
     }
 
     /**
      * Returns the list of markers.
-     * @return the list of markers.
+     * @return the list of markers
      */
     public Marker[] markers() {
-        return fwdMarkers.clone();
+        return fwdMarkerArray.clone();
     }
 
     /**
-     * Returns {@code true} if the specified marker is an element of
-     * the list of markers represented by {@code this}, and returns
-     * {@code false} otherwise.  Returns {@code false} if
-     * {@code marker==null}.
+     * Returns {@code true} if the specified marker is not {@code null}
+     * and is an element in the list of markers represented by {@code this},
+     * and returns {@code false} otherwise.
      *
-     * @param marker a marker.
+     * @param marker a marker
      *
-     * @return {@code true} if the specified marker is an element of
-     * the list of markers represented by {@code this}, and returns
-     * {@code false} otherwise.
+     * @return {@code true} if the specified marker is not {@code null} and
+     * is an element in the list of markers represented by {@code this}
      */
     public boolean contains(Marker marker) {
         return markerSet.contains(marker);
@@ -273,30 +297,30 @@ public final class Markers {
     /**
      * Returns a {@code Markers} instance that represents
      * the specified range of marker indices.
-     * @param start the starting marker index (inclusive).
-     * @param end the ending marker index (exclusive).
+     * @param start the starting marker index (inclusive)
+     * @param end the ending marker index (exclusive)
      * @return a {@code Markers} instance that represents
-     * the specified range of marker indices.
+     * the specified range of marker indices
      *
      * @throws IndexOutOfBoundsException if
-     * {@code start<0 || end>this.nMarkers()}.
-     * @throws IllegalArgumentException if {@code start>=end}.
+     * {@code start < 0 || end > this.nMarkers()}
+     * @throws IllegalArgumentException if {@code start >= end}.
      */
     public Markers restrict(int start, int end) {
-        if (end > fwdMarkers.length) {
+        if (end > fwdMarkerArray.length) {
             throw new IndexOutOfBoundsException("end > this.nMarkers(): " + end);
         }
-        return new Markers(Arrays.copyOfRange(fwdMarkers, start, end));
+        return new Markers(Arrays.copyOfRange(fwdMarkerArray, start, end));
     }
 
     /**
      * Returns the sum of the number of alleles for
      * the markers with index less than the specified index.
-     * @param marker a marker index.
+     * @param marker a marker index
      * @return the sum of the number of alleles for
-     * the markers with index less than the specified index.
+     * the markers with index less than the specified index
      * @throws IndexOutOfBoundsException if
-     * {@code marker<0 || marker>this.nMarkers()}
+     * {@code marker < 0 || marker > this.nMarkers()}
      */
     public int sumAlleles(int marker) {
         return fwdSumAlleles[marker];
@@ -304,20 +328,20 @@ public final class Markers {
 
     /**
      * Returns {@code this.sumAlleles(this.nMarkers())}.
-     * @return {@code this.sumAlleles(this.nMarkers())}.
+     * @return {@code this.sumAlleles(this.nMarkers())}
      */
     public int sumAlleles() {
-        return fwdSumAlleles[fwdMarkers.length];
+        return fwdSumAlleles[fwdMarkerArray.length];
     }
 
     /**
      * Returns the sum of the number of possible genotypes for the markers
      * with index less than the specified index.
-     * @param marker a marker index.
+     * @param marker a marker index
      * @return the sum of the number of possible genotypes for the markers
-     * with index less than the specified index.
+     * with index less than the specified index
      * @throws IndexOutOfBoundsException if
-     * {@code marker<0 || marker>this.nMarkers()}
+     * {@code marker < 0 || marker > this.nMarkers()}
      */
     public int sumGenotypes(int marker) {
         return fwdSumGenotypes[marker];
@@ -325,20 +349,20 @@ public final class Markers {
 
     /**
      * Returns {@code this.sumGenotypes(this.nMarkers())}.
-     * @return {@code this.sumGenotypes(this.nMarkers())}.
+     * @return {@code this.sumGenotypes(this.nMarkers())}
      */
     public int sumGenotypes() {
-        return fwdSumGenotypes[fwdMarkers.length];
+        return fwdSumGenotypes[fwdMarkerArray.length];
     }
 
     /**
      * Returns the number of bits requires to store a haplotype for the
      * markers with index less than the specified index.
-     * @param marker a marker index.
+     * @param marker a marker index
      * @return the number of bits requires to store a haplotype for the
-     * markers with index less than the specified index.
+     * markers with index less than the specified index
      * @throws IndexOutOfBoundsException if
-     * {@code marker<0 || marker>this.nMarkers()}
+     * {@code marker < 0 || marker > this.nMarkers()}
      */
     public int sumHaplotypeBits(int marker) {
         return fwdSumHaplotypeBits[marker];
@@ -346,20 +370,20 @@ public final class Markers {
 
     /**
      * Returns {@code this.sumHaplotypeBits(this.nMarkers())}.
-     * @return {@code this.sumHaplotypeBits(this.nMarkers())}.
+     * @return {@code this.sumHaplotypeBits(this.nMarkers())}
      */
     public int sumHaplotypeBits() {
-        return fwdSumHaplotypeBits[fwdMarkers.length];
+        return fwdSumHaplotypeBits[fwdMarkerArray.length];
     }
 
     /**
      * Returns a string representation of {@code this}.
      * The exact details of the representation are unspecified and
      * subject to change.
-     * @return a string representation of {@code this}.
+     * @return a string representation of {@code this}
      */
     @Override
     public String toString() {
-        return Arrays.toString(fwdMarkers);
+        return Arrays.toString(fwdMarkerArray);
     }
 }

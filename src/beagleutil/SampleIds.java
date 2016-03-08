@@ -32,17 +32,17 @@ public final class SampleIds {
 
     private static final SampleIds sampleIds = new SampleIds();
 
-    private final Ids instance;
+    private final ThreadSafeIndexer<String> instance;
 
     private SampleIds() {
         // private constructor to restrict instantiation.
         int initCapacity = 5000;
-        this.instance = new Ids(initCapacity);
+        this.instance = new ThreadSafeIndexer<>(initCapacity);
     }
 
     /**
      * Returns the singleton {@code SampleIds} instance.
-     * @return the singleton {@code SampleIds} instance.
+     * @return the singleton {@code SampleIds} instance
      */
     public static SampleIds instance() {
         return sampleIds;
@@ -50,70 +50,75 @@ public final class SampleIds {
 
     /**
      * Returns the index of the specified sample identifier.  If
-     * {@code this.indexIfIndexed(id)==-1}, an index will be
-     * assigned to the specified sample identifier.  Sample identifier
-     * indices are assigned in consecutive order beginning with 0.
-     * @param id a sample identifier.
-     * @return the index of the specified sample identifier.
-     * @throws IllegalArgumentException if {@code id.isEmpty()}.
-     * @throws NullPointerException if {@code id==null}.
+     * the sample identifier is not yet indexed, the sample identifier
+     * will be indexed.  Sample identifier indices are assigned in
+     * consecutive order beginning with 0.
+     * @param id a sample identifier
+     * @return the index of the specified sample identifier
+     * @throws IllegalArgumentException if {@code id.isEmpty()}
+     * @throws NullPointerException if {@code id == null}
      */
-    public int indexOf(String id) {
-        return instance.indexOf(id);
+    public int getIndex(String id) {
+        if (id.isEmpty()) {
+            throw new IllegalArgumentException("id.isEmpty()");
+        }
+        return instance.getIndex(id);
     }
 
     /**
      * Returns the index of the specified sampled identifier, or returns
      * {@code -1} if the specified sample identifier is not indexed.
      *
-     * @param id a sample identifiers.
+     * @param id a sample identifiers
      * @return the index of the specified sampled identifier, or
-     * {@code -1} if the specified sample identifier is not indexed.
+     * {@code -1} if the specified sample identifier is not indexed
      *
-     * @throws IllegalArgumentException if {@code id.isEmpty()}.
-     * @throws NullPointerException if {@code id==null}.
+     * @throws IllegalArgumentException if {@code id.isEmpty()}
+     * @throws NullPointerException if {@code id == null}
      */
-    public int indexIfIndexed(String id) {
-        return instance.indexIfIndexed(id);
+    public int getIndexIfIndexed(String id) {
+        if (id.isEmpty()) {
+            throw new IllegalArgumentException("id.isEmpty()");
+        }
+        return instance.getIndexIfIndexed(id);
     }
 
     /**
-     * Returns the number of samples identifiers.
-     * @return the number of samples identifiers.
+     * Returns the number of indexed sample identifiers.
+     * @return the number of indexed samples identifiers
      */
     public int size() {
         return instance.size();
     }
 
     /**
-     * Returns the specified sample identifier.
-     * @param index a sample index.
-     * @return the specified sample identifier.
+     * Returns the sample identifier with the specified index.
+     * @param index a sample identifier index
+     * @return the specified sample identifier
      * @throws IndexOutOfBoundsException if
-     * {@code  index<0 || index>=this.size()}.
+     * {@code  index < 0 || index >= this.size()}
      */
     public String id(int index) {
-        return instance.id(index);
+        return instance.item(index);
     }
 
     /**
-     * Returns an array of sample identifiers.  The returned array
-     * will have length {@code this.size()} and it will satisfy
-     * {@code this.ids()[k].equals(this.id(k))==true}
-     * for {@code  0<=k && k<this.size()}.
+     * Returns the list of indexed sample identifiers as an array.
+     * The returned array will have length {@code this.size()}, and
+     * it will satisfy
+     * {@code this.ids()[k].equals(this.id(k)) == true}
+     * for {@code  0 <= k && k < this.size()}.
      *
-     * @return an array of sample identifiers.
+     * @return an array of sample identifiers
      */
     public String[] ids() {
-        return instance.ids();
+        return instance.items().toArray(new String[0]);
     }
 
     /**
-     * Returns a string representation of {@code this}.
-     * The returned string is equal to
-     * {@code java.util.Arrays.toString(this.ids())}.
+     * Returns {@code java.util.Arrays.toString(this.ids())}.
      *
-     * @return a string representation of {@code this}.
+     * @return a string representation of {@code this}
      */
     @Override
     public String toString() {

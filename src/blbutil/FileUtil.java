@@ -41,70 +41,24 @@ import net.sf.samtools.util.BlockCompressedOutputStream;
  */
 public class FileUtil {
 
-    /**
-     * The default number of bytes in the buffer for buffered file writers.
-     * The value of this field is {@code 10 * (1 << 20)}.
-     */
-    public static final int DEFAULT_BUFFER_SIZE = 10 * (1 << 20);
-
     private FileUtil() {
         // private constructor prevents instantiation
     }
 
     /**
-     * Returns a {@code java.io.PrintWriter} writing to
-     * the specified file and having the specified buffer size.
-     * The output will be compressed using the BGZIP compression algorithm.
-     * Any existing file corresponding to the specified file will be deleted.
-     * If the file cannot be opened, an error message will be printed and
-     * the java interpreter will exit.
-     *
-     * @param file the file to be opened for output.
-     * @param size the buffer size in bytes.
-     * @return a {@code java.io.PrintWriter} writing to
-     * the specified file.
-     * @throws IllegalArgumentException if {@code size<=0}
-     */
-    public static PrintWriter bgzipPrintWriter(File file, int size) {
-        PrintWriter out = null;
-        try {
-            OutputStream fout = new FileOutputStream(file);
-            out = new PrintWriter(new BlockCompressedOutputStream(
-                    new BufferedOutputStream(fout, size), file));
-        } catch (FileNotFoundException e) {
-            Utilities.exit("Error opening " + file, e);
-        }
-        return out;
-    }
-
-    /**
-     * Returns a {@code java.io.PrintWriter} writing to
-     * the specified file.  The resulting file will be compressed using
-     * the BGZIP compression algorithm.  Any existing file corresponding
-     * to the specified file will be deleted.  If the file
-     * cannot be opened, an error message will be printed and the
-     * java interpreter will exit.
-     *
-     * @param file the file to be opened for output.
-     * @return a {@code java.io.PrintWriter} writing to
-     * the specified file.
-     */
-    public static PrintWriter bgzipPrintWriter(File file) {
-        return bgzipPrintWriter(file, DEFAULT_BUFFER_SIZE);
-    }
-
-    /**
-     * Returns a data input stream reading from the specified file.  If the
-     * input stream cannot be opened, an error message will be printed and the
-     * java interpreter will exit.
-     * @param file a binary file.
-     * @return a data input stream reading from the specified file.
+     * Returns a buffered {@code java.io.DataInputStream} reading from the
+     * specified file.  If the input stream cannot be opened, an error message
+     * will be printed and the java interpreter will exit.
+     * @param file a file
+     * @return a buffered {@code java.io.DataInputStream} reading from the
+     * specified file
+     * @throws NullPointerException if {@code file == null}
      */
     public static DataInputStream dataInputStream(File file) {
         DataInputStream dis = null;
         try {
             dis = new DataInputStream(new BufferedInputStream(
-                    new FileInputStream(file), DEFAULT_BUFFER_SIZE));
+                    new FileInputStream(file)));
         } catch (FileNotFoundException e) {
             Utilities.exit("Error opening " + file, e);
         }
@@ -112,16 +66,16 @@ public class FileUtil {
     }
 
     /**
-     * Returns a {@code java.io.DataOutputStream} writing to
-     * the specified file and having the specified buffer size.
-     * Any existing file will be overwritten. If the file cannot be opened,
+     * Returns a buffered {@code java.io.DataOutputStream} writing to
+     * the specified file.  Any existing file corresponding to the
+     * {@code File} object will be deleted.   If the file cannot be opened,
      * an error message will be printed and the java interpreter will exit.
-     * @param file the file to be opened for output.
-     * @param size size of the buffer in bytes.
-     * @return a {@code java.io.DataOutputStream} writing to
-     * the specified file.
+     * @param file a file
+     * @return a buffered {@code java.io.DataOutputStream} writing to
+     * the specified file
+     * @throws NullPointerException if {@code file == null}
      */
-    public static DataOutputStream dataOutputStream(File file, int size) {
+    public static DataOutputStream dataOutputStream(File file) {
         OutputStream dos = null;
         try {
             dos = new FileOutputStream(file);
@@ -129,75 +83,8 @@ public class FileUtil {
             Utilities.exit("Error opening " + file, e);
         }
         DataOutputStream out = new DataOutputStream(
-                new BufferedOutputStream(dos, size));
+                new BufferedOutputStream(dos));
         return out;
-    }
-
-    /**
-     * Returns a {@code java.io.DataOutputStream} writing to
-     * the specified file.  Any existing file corresponding to the
-     * {@code File} object will be deleted.   If the file cannot be opened,
-     * an error message will be printed and the java interpreter will exit.
-     * @param file the file to be opened for output.
-     * @return a {@code java.io.DataOutputStream} writing to
-     * the specified file.
-     */
-    public static DataOutputStream dataOutputStream(File file) {
-        return dataOutputStream(file, DEFAULT_BUFFER_SIZE);
-    }
-
-    /**
-     * Returns a {@code java.io.PrintWriter} writing to
-     * the specified file.  The resulting file will be compressed using
-     * the GZIP compression algorithm.  Any existing file corresponding
-     * to the specified file will be deleted.  If the file
-     * cannot be opened, an error message will be printed and the
-     * java interpreter will exit.
-     * @param file the file to be opened for output.
-     * @return a {@code java.io.PrintWriter} writing to
-     * the specified file.
-     */
-    public static PrintWriter gzipPrintWriter(File file) {
-        return gzipPrintWriter(file, DEFAULT_BUFFER_SIZE);
-    }
-
-    /**
-     * Returns a {@code java.io.PrintWriter} writing to
-     * the specified file and having the specified buffer size.
-     * The resulting file will be compressed using the GZIP compression
-     * algorithm.  Any existing file corresponding to the specified file
-     * will be deleted.  If the file cannot be opened, an error message
-     * will be printed and the java interpreter will exit.
-     *
-     * @param file the file to be opened for output.
-     * @param size the buffer size in bytes.
-     * @return a {@code java.io.PrintWriter} writing to
-     * the specified file.
-     * @throws IllegalArgumentException if {@code size<=0}
-     */
-    public static PrintWriter gzipPrintWriter(File file, int size) {
-        PrintWriter out = null;
-        try {
-            out = new PrintWriter(
-                    new GZIPOutputStream(new FileOutputStream(file), size));
-        } catch (IOException e) {
-            Utilities.exit("Error opening " + file, e);
-        }
-        return out;
-    }
-
-    /**
-     * Returns a {@code java.io.PrintWriter} writing to
-     * the specified file.  Any existing file corresponding
-     * to the specified filename will be deleted.  If the file
-     * cannot be opened, an error message will be printed and the
-     * java interpreter will exit.
-     * @param file the file to be opened for output.
-     * @return a {@code java.io.PrintWriter} writing to
-     * the specified file.
-     */
-    public static PrintWriter printWriter(File file) {
-        return printWriter(file, false);
     }
 
     /**
@@ -205,61 +92,115 @@ public class FileUtil {
      * to standard out.
      *
      * @return a {@code java.io.PrintWriter} that writes
-     * to standard out.
+     * to standard out
      */
     public static PrintWriter stdOutPrintWriter() {
         return new PrintWriter(
-                new BufferedOutputStream(System.out, DEFAULT_BUFFER_SIZE));
+                new BufferedOutputStream(System.out));
     }
 
     /**
-     * Returns a {@code java.io.PrintWriter} writing to
-     * the specified file.  If {@code append==false}
-     * any existing file corresponding to the specified file will be deleted.
-     * If the file cannot be opened, an error message will be printed and the
+     * Returns a buffered {@code java.io.PrintWriter} writing to
+     * the specified file.  The resulting file will be compressed using
+     * the GZIP compression algorithm.  Any existing file corresponding
+     * to the specified file will be deleted.  If the file
+     * cannot be opened, an error message will be printed and the
      * java interpreter will exit.
-     *
-     * @param file the file to be opened for output.
-     * @param append if {@code true}, then data will be appended
-     * to the end of any existing file.
-     * @return a {@code java.io.PrintWriter} writing to
-     * the specified file.
+     * @param file a file
+     * @return a {@code java.io.PrintWriter} writing to the specified file
+     * @throws NullPointerException if {@code file == null}
      */
-    public static PrintWriter printWriter(File file, boolean append) {
-        return printWriter(file, append, DEFAULT_BUFFER_SIZE);
-    }
-
-    /**
-     * Returns a {@code java.io.PrintWriter} writing to
-     * the specified file and having the specified buffer size.
-     * If {@code append==false} any existing file corresponding
-     * to the specified file will be deleted.  If {@code size==0}
-     * there will be no buffering.  If the file cannot be opened,
-     * an error message will be printed and the java interpreter will exit.
-     *
-     * @param file the file to be opened for output.
-     * @param append if {@code true}, then data will be appended
-     * to the end of any existing file.
-     * @param size the buffer size in bytes.
-     * @return a {@code java.io.PrintWriter} writing to
-     * the specified file.
-     * @throws IllegalArgumentException if {@code size < 0}.
-     */
-    public static PrintWriter printWriter(File file, boolean append, int size) {
-        if (size==0) {
-            return nonBufferedFileWriter(file, append);
-        }
+    public static PrintWriter gzipPrintWriter(File file) {
         PrintWriter out = null;
         try {
             out = new PrintWriter(
-                    new BufferedWriter(new FileWriter(file, append), size));
+                    new GZIPOutputStream(new FileOutputStream(file)));
         } catch (IOException e) {
             Utilities.exit("Error opening " + file, e);
         }
         return out;
     }
 
-    private static PrintWriter nonBufferedFileWriter(File file, boolean append) {
+    /**
+     * Returns a buffered {@code java.io.PrintWriter} writing to
+     * the specified file.  The resulting file will be compressed using
+     * the BGZIP compression algorithm.  Any existing file corresponding
+     * to the specified file will be deleted.  If the file
+     * cannot be opened, an error message will be printed and the
+     * java interpreter will exit.
+     *
+     * @param file a file
+     * @return a buffered {@code java.io.PrintWriter} writing to
+     * the specified file
+     * @throws NullPointerException if {@code file == null}
+     */
+    public static PrintWriter bgzipPrintWriter(File file) {
+        PrintWriter out = null;
+        try {
+            OutputStream fout = new FileOutputStream(file);
+            out = new PrintWriter(new BlockCompressedOutputStream(
+                    new BufferedOutputStream(fout), file));
+        } catch (FileNotFoundException e) {
+            Utilities.exit("Error opening " + file, e);
+        }
+        return out;
+    }
+
+    /**
+     * Returns a buffered {@code java.io.PrintWriter} writing to
+     * the specified file.  Any existing file corresponding
+     * to the specified filename will be deleted.  If the file
+     * cannot be opened, an error message will be printed and the
+     * java interpreter will exit.
+     * @param file a file
+     * @return a buffered {@code java.io.PrintWriter} writing to
+     * the specified file
+     * @throws NullPointerException if {@code file == null}
+     */
+    public static PrintWriter printWriter(File file) {
+        return printWriter(file, false);
+    }
+
+    /**
+     * Returns a buffered {@code java.io.PrintWriter} writing to
+     * the specified file. If {@code append == false}
+     * any existing file corresponding to the specified file will be deleted.
+     * If the file cannot be opened, an error message will be printed and the
+     * java interpreter will exit.
+     *
+     * @param file a file
+     * @param append {@code true} if the data will be appended
+     * to the end of any existing file
+     * @return a buffered {@code java.io.PrintWriter} writing to
+     * the specified file
+     * @throws NullPointerException if {@code file == null}
+     */
+    public static PrintWriter printWriter(File file, boolean append) {
+        PrintWriter out = null;
+        try {
+            out = new PrintWriter(
+                    new BufferedWriter(new FileWriter(file, append)));
+        } catch (IOException e) {
+            Utilities.exit("Error opening " + file, e);
+        }
+        return out;
+    }
+
+    /**
+     * Returns a non-buffered {@code java.io.PrintWriter} writing to
+     * the specified file.
+     * If {@code append == false} any existing file corresponding
+     * to the specified file will be deleted. If the file cannot be opened,
+     * an error message will be printed and the java interpreter will exit.
+     *
+     * @param file a file
+     * @param append {@code true} if the data will be appended
+     * to the end of any existing file
+     * @return a non-buffered {@code java.io.PrintWriter} writing to
+     * the specified file
+     * @throws NullPointerException if {@code file == null}
+     */
+    public static PrintWriter nonBufferedPrintWriter(File file, boolean append) {
         boolean autoflush = true;
         PrintWriter pw = null;
         try {
@@ -274,14 +215,12 @@ public class FileUtil {
      * Returns a temporary {@code File} that will be deleted when
      * the Java virtual machine exits.
      *
-     * @param prefix the prefix string to be used in generating the file's
-     * name.  The prefix must be at least three characters long.
+     * @param prefix the filename prefix.
      *
-     * @return a {@code File} with an abstract pathname denoting a
-     * newly created empty file.
+     * @return a {@code File} a new empty file.
      *
-     * @throws IllegalArgumentException if the {@code prefix}
-     * argument contains fewer than three characters.
+     * @throws IllegalArgumentException if {@code prefix} contains fewer than
+     * three characters
      */
     public static File tempFile(String prefix) {
         File tempFile = null;

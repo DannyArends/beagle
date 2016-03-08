@@ -18,135 +18,181 @@
  */
 package vcf;
 
-import blbutil.SampleFileIterator;
 import beagleutil.Samples;
-import blbutil.Const;
+import blbutil.SampleFileIt;
+import java.io.Closeable;
 import java.io.File;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
-import main.Logger;
+import main.GeneticMap;
 
 /**
- * Class {@code VcfWindow} represents a sliding window of VCF records.
+ * <p>Class {@code VcfWindow} represents a sliding window of VCF records.
+ * </p>
+ * Instances of class {@code VcfWindow} are not thread-safe.
  *
  * @author Brian L. Browning {@code <browning@uw.edu>}
  */
-public class VcfWindow {
+public class VcfWindow implements Closeable {
 
-    private final SampleFileIterator<VcfEmission> it;
+    private final SampleFileIt<? extends VcfEmission> it;
+    private final List<VcfEmission> window;
     private int overlap;
     private int cumMarkerCnt;
-    private VcfEmission[] data;
-
     private VcfEmission next;
 
     /**
      * Constructs a new {@code VcfWindow} instance.
-     * @param it an iterator that returns {@code VcfEmission} objects.
-
-     * @throws IllegalArgumentException if {@code it.hasNext()==false}.
-     * @throws IllegalArgumentException if a format error in the input data
-     * is encountered.
-     * @throws NullPointerException if {@code it==null}.
+     * @param it an iterator that returns VCF records
+     * @throws IllegalArgumentException if {@code it.hasNext() == false}
+     * @throws IllegalArgumentException if a format error is detected in
+     * a VCF record
+     * @throws NullPointerException if {@code it == null}
      */
-    public VcfWindow(SampleFileIterator<VcfEmission> it) {
+    public VcfWindow(SampleFileIt<? extends VcfEmission> it) {
         if (it.hasNext()==false) {
-            StringBuilder sb = new StringBuilder(100);
-            sb.append("No VCF records found.");
-            if (it.file()!=null) {
-                sb.append(" (file: ");
-                sb.append(it.file());
-                sb.append(")");
-            }
-            sb.append(Const.nl);
-            sb.append("Check that the chromosome identifiers are the same in each input VCF");
-            sb.append(Const.nl);
-            sb.append("file and in the \'chrom=\' command line argument (if \'chrom=\' is used).");
-            throw new IllegalArgumentException(sb.toString());
+            throw new IllegalArgumentException("it.hasNext()==false");
         }
+        this.it = it;
         this.overlap = 0;
         this.cumMarkerCnt = 0;
-        this.it = it;
-        this.data = new VcfEmission[0];
+        this.window = new ArrayList<>(20000);
         this.next = it.next();
     }
 
     /**
-     * Returns {@code true} if the sliding marker window is the last
-     * marker window for the chromosome and returns {@code false}
-     * otherwise.
-     * @return {@code true} if the sliding marker window is the last
-     * marker window for the chromosome and {@code false} otherwise.
+     * Returns {@code true} if the sliding window of VCF Records is the last
+     * window for the chromosome and returns {@code false} otherwise.
+     * @return {@code true} if the sliding window of VCF Records is the last
+     * window for the chromosome
      */
     public boolean lastWindowOnChrom() {
-        return next==null || data.length==0
-                || sameChrom(next, data[data.length-1])==false;
+        return next==null || (sameChrom(next, window.get(0))==false);
+    }
+
+    private boolean sameChrom(VcfEmission a, VcfEmission b) {
+        return a.marker().chromIndex()==b.marker().chromIndex();
     }
 
     /**
-     * Returns {@code true} if the sliding marker window can advance
+     * Returns {@code true} if the sliding window of VCF records can advance
      * and returns {@code false} otherwise.
-     * @return {@code true} if the sliding marker window can advance
-     * and returns {@code false} otherwise.
+     * @return {@code true} if the sliding window of VCF records can advance
      */
     public boolean canAdvanceWindow() {
         return next!=null;
     }
 
     /**
-     * Advances the sliding marker window, and returns the advanced window.
+     * Advances the sliding window of VCF records, and returns the advanced
+     * window as a {@code VcfEmission[]} object.  The size of the advanced
+     * window and the number of markers of overlap between the marker window
+     * immediately before method invocation and the marker window immediately
+     * after method invocation may differ from the requested values.  If the
+     * advanced window size or overlap is less than the requested value, the
+     * actual value will be as large as possible. If
+     * {@code this.lastWindowOnChrom() == true} before method invocation, then
+     * there will be no overlap between the advanced window and the previous
+     * window.
      *
-     * @param overlap the requested number of markers of overlap between the
-     * marker window immediately before the method invocation and the
-     * marker window immediately after the method returns.
-     * If the marker window immediately before method invocation contains
-     * the final marker on a chromosome, there will be 0 markers
-     * in the overlap.
-     * @param windowSize the requested number of the markers in the
-     * advanced marker window.
-     * @return the advanced window.
+     * @param overlap the requested number of markers of overlap
+     * @param windowSize the requested number of the markers in the window
+     * immediately after the method returns
+     * @return the advanced window of VCF records
      *
-     * @throws IllegalArgumentException if a format error in the input data
-     * is encountered.
+     * @throws IllegalArgumentException if a format error is detected in
+     * a VCF record
      * @throws IllegalArgumentException if
-     * {@code overlap<0 || overlap>=windowSize}
+     * {@code overlap < 0 || overlap >= windowSize}
      * @throws IllegalStateException if
-     * {@code this.canAdvanceWindow()==false}
+     * {@code this.canAdvanceWindow() == false}
      */
     public VcfEmission[] advanceWindow(int overlap, int windowSize) {
-        checkParameters(overlap, windowSize);
         if (canAdvanceWindow()==false) {
             throw new IllegalStateException("canAdvanceWindow()==false");
         }
-        if (overlap > data.length) {
-            overlap = data.length;
-        }
-        if (data.length==0 || sameChrom(next, data[data.length-1])==false) {
-            overlap = 0;
-        }
-        assert next!=null;
-        VcfEmission first = next;
+        checkParameters(overlap, windowSize);
+        overlap = getActualOverlap(overlap);
         List<VcfEmission> newWindow = new ArrayList<>(windowSize);
-        for (int j=(data.length-overlap); j<data.length; ++j) {
-            newWindow.add(data[j]);
-        }
-        for (int j=overlap;
-                (j<windowSize && next!=null && sameChrom(next, first)); ++j) {
+
+        newWindow.addAll(window.subList(window.size() - overlap, window.size()));
+        int currentChromIndex = currentChromIndex(newWindow);
+        while (newWindow.size() < windowSize
+                && next != null
+                && next.marker().chromIndex()==currentChromIndex) {
             newWindow.add(next);
-            next = readRecord(it);
+            next = it.hasNext() ? it.next() : null;
         }
         // add all markers at the same marker position
         VcfEmission last = newWindow.get(newWindow.size()-1);
-        while (next!=null && sameChromAndPosition(last, next)) {
+        while (next!=null && samePosition(last, next)) {
             newWindow.add(next);
-            next = readRecord(it);
+            next = it.hasNext() ? it.next() : null;
         }
         this.overlap = overlap;
-        this.data = newWindow.toArray(new VcfEmission[0]);
-        this.cumMarkerCnt += (data.length - overlap);
-        return data.clone();
+        this.window.clear();
+        this.window.addAll(newWindow);
+        this.cumMarkerCnt += (window.size() - overlap);
+        return window.toArray(new VcfEmission[0]);
+    }
+
+    /**
+     * Advances the sliding window of VCF records, and returns the advanced
+     * window as a {@code VcfEmission[]} object.  The size of the advanced
+     * window and the number of markers of overlap between the marker window
+     * immediately before method invocation and the marker window immediately
+     * after method invocation may differ from the requested values.  If the
+     * distance the window is advanced or the overlap is less than the requested
+     * value, the actual distance or overlap will be as large as possible. If
+     * {@code this.lastWindowOnChrom() == true}
+     * before method invocation, then there will be no overlap between the
+     * advanced window and the previous window
+     *
+     * @param overlap the requested number of markers of overlap
+     * @param cM the requested distance in cM to advance the window
+     * @param map the genetic map
+     * @return the advanced window of VCF records
+     *
+     * @throws IllegalArgumentException if a format error is detected in
+     * a VCF record
+     * @throws IllegalArgumentException if {@code overlap < 0 || cM <= 0}
+     * @throws IllegalStateException if
+     * {@code this.canAdvanceWindow() == false}
+     */
+    public VcfEmission[] advanceWindow(int overlap, double cM, GeneticMap map) {
+        if (canAdvanceWindow()==false) {
+            throw new IllegalStateException("canAdvanceWindow()==false");
+        }
+        if (overlap < 0) {
+            throw new IllegalArgumentException(String.valueOf(overlap));
+        }
+        if (cM < 0) {
+            throw new IllegalArgumentException(String.valueOf(cM));
+        }
+
+        overlap = getActualOverlap(overlap);
+        List<VcfEmission> newWindow = new ArrayList<>(overlap + 1000);
+
+        newWindow.addAll(window.subList(window.size() - overlap, window.size()));
+        int currentChromIndex = currentChromIndex(newWindow);
+        double endMapPos = startMapPos(newWindow, map) + cM;
+        while (next != null
+                && next.marker().chromIndex()==currentChromIndex
+                && map.genPos(next.marker()) < endMapPos) {
+            newWindow.add(next);
+            next = it.hasNext() ? it.next() : null;
+        }
+        // add all markers at the same marker position
+        VcfEmission last = newWindow.get(newWindow.size()-1);
+        while (next!=null && samePosition(last, next)) {
+            newWindow.add(next);
+            next = it.hasNext() ? it.next() : null;
+        }
+        this.overlap = overlap;
+        this.window.clear();
+        this.window.addAll(newWindow);
+        this.cumMarkerCnt += (window.size() - overlap);
+        return window.toArray(new VcfEmission[0]);
     }
 
     private void checkParameters(int overlap, int windowSize) {
@@ -156,202 +202,57 @@ public class VcfWindow {
         }
     }
 
-    /**
-     * Advances the sliding marker window, and returns the advanced window.
-     * The returned array will have length {@code markers.nMarkers()}.
-     * Markers not found in the data source will have {@code null}
-     * entries in the returned array.
-     *
-     * @param markers a set of markers in the advanced window.
-     * @return the advanced marker window.
-     *
-     * @throws IllegalArgumentException if {@code markers.nMarkers()==0}
-     * @throws IllegalArgumentException if any two of the specified markers
-     * are on different chromosomes.
-     * @throws IllegalArgumentException if the specified markers do not
-     * cause the marker window to advance.
-     * @throws IllegalArgumentException if a format error in the input data
-     * is encountered.
-     * @throws IllegalArgumentException if the input data does not contain
-     * any of the specified markers.
-     * @throws IllegalStateException if {@code canAdvanceWindow()==false}.
-     */
-    public VcfEmission[] advanceWindow(Markers markers) {
-        if (canAdvanceWindow()==false) {
-            throw new IllegalStateException("canAdvanceWindow()==false");
-        }
-        checkMarkers(markers);
-        VcfEmission[] prevWindow = data;
-        VcfEmission[] nextWindow = new VcfEmission[markers.nMarkers()];
-        int firstNewMarkerIndex = firstNewMarkerIndex(markers, prevWindow);
-        this.overlap = copyOverlap(markers, firstNewMarkerIndex, prevWindow,
-                nextWindow);
-        boolean addedNew = readDataForNewmarkers(markers, nextWindow,
-                firstNewMarkerIndex);
-        if (overlap==0 && addedNew==false) {
-            String s = missingTargetMarkersErr(markers);
-            throw new IllegalArgumentException(s);
-        }
-        this.data = nextWindow;
-        return nextWindow.clone();
-    }
-
-    private void checkMarkers(Markers markers) {
-        if (markers.nMarkers()==0) {
-            throw new IllegalArgumentException("markers.nMarkers()=0");
-        }
-        Marker first = markers.marker(0);
-        Marker last = markers.marker(markers.nMarkers()-1);
-        if (first.chromIndex() != last.chromIndex()) {
-            String s = "inconsistent chromosomes:" + Const.nl
-                    + first + Const.nl + last;
-            throw new IllegalArgumentException(s);
-        }
-    }
-
-    private static int firstNewMarkerIndex(Markers markers,
-            VcfEmission[] prevData) {
-        assert markers.nMarkers()>0;
-        int lastChrom = Integer.MIN_VALUE;
-        int lastPos = Integer.MIN_VALUE;
-        int lastNonNullIndex = lastNonNullIndex(prevData);
-        if (lastNonNullIndex >= 0) {
-            lastChrom = prevData[lastNonNullIndex].marker().chromIndex();
-            lastPos = prevData[lastNonNullIndex].marker().pos();
-        }
-        if (markers.marker(0).chromIndex() != lastChrom) {
+    private int getActualOverlap(int overlap) {
+        if (window.isEmpty() || lastWindowOnChrom()) {
             return 0;
         }
-        else {
-            int n = markers.nMarkers();
-            int index=0;
-            Marker m = markers.marker(index);
-            while (m!=null && m.chromIndex()==lastChrom && m.pos()<=lastPos ) {
-                m = ++index<n ? markers.marker(index) : null;
-            }
-            if (index==markers.nMarkers()) {
-                String s = "markers do not advance current marker window";
-                throw new IllegalArgumentException(s);
-            }
-            return index;
+        int n = window.size();
+        if (overlap > n) {
+            overlap = n;
         }
-    }
-
-    private static int lastNonNullIndex(VcfEmission[] data) {
-        int index = data.length - 1;
-        while (index>=0 && data[index]==null) {
-            --index;
-        }
-        return index;
-    }
-
-    private static String missingTargetMarkersErr(Markers markers) {
-        return "no target markers found in interval: "
-                + interval(markers)
-                + Const.nl
-                + "Check that target VCF file markers have identical CHROM, POS, REF,"
-                + Const.nl
-                + "and ALT fields as the corresponding reference VCF file markers.";
-    }
-
-    private static String interval(Markers markers) {
-        Marker a = markers.marker(0);
-        Marker b = markers.marker(markers.nMarkers()-1);
-        String start = a.chrom() + Const.colon + a.pos();
-        String end = String.valueOf(b.pos());
-        if (a.chromIndex()!=b.chromIndex()) {
-            end = b.chromIndex() + Const.colon + end;
-
-        }
-        return (start + Const.hyphen + end);
-    }
-
-    private static int copyOverlap(Markers markers, int firstNewMarkerIndex,
-            VcfEmission[] prev, VcfEmission[] next) {
-        int overlap = 0;
-        Map<Marker, VcfEmission> map = new HashMap<>();
-        for (VcfEmission vm : prev) {
-            if (vm!=null) {
-                map.put(vm.marker(), vm);
-            }
-        }
-        for (int j=0; j<firstNewMarkerIndex; ++j) {
-            next[j] = map.get(markers.marker(j));
-            if (next[j]!=null) {
-                ++overlap;
-            }
+        while (overlap > 0 && overlap < n
+                && window.get(n - overlap).marker().pos()
+                    == window.get(n - overlap - 1).marker().pos()) {
+            ++overlap;
         }
         return overlap;
     }
-    /*
-     * Returns true if one or more new markers were added, and returns false
-     * otherwise.
-     */
-    private boolean readDataForNewmarkers(Markers markers,
-            VcfEmission[] nextWindow, int firstNewIndex) {
-        int addedCnt = 0;
-        if (firstNewIndex==0 && markers.nMarkers()>0) {
-            int chromIndex = markers.marker(0).chromIndex();
-            while (next!=null && next.marker().chromIndex()!=chromIndex) {
-                next = readRecord(it);
-            }
+
+    private int currentChromIndex(List<VcfEmission> currentWindow) {
+        if (currentWindow.isEmpty()==false) {
+            return currentWindow.get(0).marker().chromIndex();
         }
-        for (int j=firstNewIndex; j<nextWindow.length; ++j) {
-            boolean success = readDataForMarker(markers, j);
-            if (success) {
-                assert next.marker().equals(markers.marker(j));
-                ++addedCnt;
-                nextWindow[j] = next;
-                next = readRecord(it);
-            }
+        else if (next!=null) {
+            return next.marker().chromIndex();
         }
-        cumMarkerCnt += addedCnt;
-        return (addedCnt>0);
+        else {
+            return -1;
+        }
     }
 
-    /* returns true if data for marker was read */
-    private boolean readDataForMarker(Markers markers, int index) {
-        Marker m = markers.marker(index);
-        while (next!=null
-                && next.marker().chromIndex()==m.chromIndex()
-                && next.marker().pos()<m.pos() ) {
-            next = readRecord(it);
+    private double startMapPos(List<VcfEmission> currentWindow, GeneticMap map) {
+        if (currentWindow.isEmpty()==false) {
+            Marker m = currentWindow.get(currentWindow.size() - 1).marker();
+            return map.genPos(m);
         }
-        while (next!=null
-                && next.marker().chromIndex()==m.chromIndex()
-                && next.marker().pos()==m.pos()
-                && markers.contains(next.marker())==false) {
-            next = readRecord(it);
+        else if (next!=null) {
+            return map.genPos(next.marker());
         }
-        return next!=null && m.equals(next.marker());
+        else {
+            return 0;
+        }
     }
 
-    private boolean sameChrom(VcfEmission a, VcfEmission b) {
-        return a.marker().chromIndex()==b.marker().chromIndex();
-    }
-
-    private boolean sameChromAndPosition(VcfEmission a, VcfEmission b) {
+    private boolean samePosition(VcfEmission a, VcfEmission b) {
         return a.marker().chromIndex()==b.marker().chromIndex()
                 && a.marker().pos()==b.marker().pos();
     }
 
-    private VcfEmission readRecord(SampleFileIterator<VcfEmission> it) {
-        VcfEmission e = it.hasNext() ? it.next() : null;
-        if (e!=null && e.isMissingData()) {
-            String s = "Skipping VCF record with no data: " + e.marker();
-            Logger.getInstance().println(s);
-            e = it.hasNext() ? it.next() : null;
-        }
-        return e;
-    }
-
     /**
-     * Returns the file from which data are read, or returns
-     * {@code null} if the file source is unknown or if the
-     * source is standard input.
-     * @return the file from which data are read, or returns
-     * {@code null} if the file source is unknown or if the
-     * source is standard input.
+     * Returns the file from which VCF records are read, or returns
+     * {@code null} if the source is standard input.
+     * @return the file from which VCF records are read, or
+     * {@code null} if the source is standard input
      */
     public File file() {
         return it.file();
@@ -359,7 +260,7 @@ public class VcfWindow {
 
     /**
      * Returns the list of samples.
-     * @return the list of samples.
+     * @return the list of samples
      */
     public Samples samples() {
         return it.samples();
@@ -367,39 +268,39 @@ public class VcfWindow {
 
     /**
      * Returns the number of samples.
-     * @return the number of samples.
+     * @return the number of samples
      */
     public int nSamples() {
-        return it.samples().nSamples();
+        return  it.samples().nSamples();
     }
 
     /**
-     * Returns the number of markers overlap between the current marker window
-     * and the previous marker window.  Returns 0 if the current marker window
-     * is the first marker window.
+     * Returns the number of VCF records in the overlap between the current
+     * window and the previous window.  Returns 0 if the current window
+     * is the first window.
      *
-     * @return the number of markers overlap between the current marker window
-     * and the previous marker window.
+     * @return the number of VCF records in the overlap between the current
+     * window and the previous window
      */
     public int overlap() {
         return overlap;
     }
 
     /**
-     * Returns the number of markers in the union of the current marker window
-     * and all previous marker windows.
+     * Returns the number of distinct VCF records in the union of the current
+     * window and all previous windows.
      *
-     * @return the number of markers in the union of the current marker window
-     * and all previous marker windows.
+     * @return the number of distinct VCF records in the union of the current
+     * window and all previous windows
      */
     public int cumMarkerCnt() {
         return cumMarkerCnt;
     }
 
     /**
-     * Closes any I/O resources controlled by this
-     * {@code VcfWindow} object.
+     * Releases any I/O resources controlled by this object.
      */
+    @Override
     public void close() {
         it.close();
     }
@@ -407,12 +308,14 @@ public class VcfWindow {
     /**
      * Returns a string representation of {@code this}.  The exact
      * details of the representation are unspecified and subject to change.
-     * @return a string representation of {@code this}.
+     * @return a string representation of {@code this}
      */
     @Override
     public String toString() {
-        StringBuilder sb = new StringBuilder();
-        sb.append("vcf.VcfWindow");
+        StringBuilder sb = new StringBuilder(1100);
+        sb.append(this.getClass().toString());
+        sb.append("; next: ");
+        sb.append(next);
         return sb.toString();
     }
 }

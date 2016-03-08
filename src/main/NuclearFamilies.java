@@ -19,8 +19,8 @@
 package main;
 
 import beagleutil.Samples;
-import blbutil.FileIterator;
-import blbutil.InputIterator;
+import blbutil.FileIt;
+import blbutil.InputIt;
 import blbutil.StringUtil;
 import java.io.File;
 import java.util.Arrays;
@@ -33,13 +33,13 @@ import java.util.Arrays;
  * the parent-offspring trios in the list of samples. A single individual is
  * an  individuals without a parent or offspring in the list of samples.
  * </p>
- * Instances of class {@code NuclearFamilies} are immutable.
+ * <p>Instances of class {@code NuclearFamilies} are immutable.
+ * </p>
  *
  * @author Brian L. Browning {@code <browning@uw.edu>}
  */
 public class NuclearFamilies {
 
-    private final File pedFile;
     private final Samples samples;
 
     private final int[] single;
@@ -57,18 +57,18 @@ public class NuclearFamilies {
      * if no pedigree relationships are known.  A pedigree file must have
      * at least 4 white-space delimited columns.  The first column of the
      * pedigree file (family ID) is ignored.  The second, third, and fourth
-     * columns are the individual's ID, father's ID, and mother's ID
-     * respectively.
+     * columns are the individual's ID, the individual's father's ID, and
+     * the individual's mother's ID respectively.
      *
-     * @throws NullPointerException if {@code samples==null}.
      * @throws IllegalArgumentException if a pedigree file is specified,
-     * and it has a non-blank line with less than 4 white-space delimited fields.
+     * and if the file has a non-blank line with less than 4 white-space
+     * delimited fields
      * @throws IllegalArgumentException if a pedigree file is specified,
-     * and it has duplicate individual identifiers in the second white-space
-     * delimited column.
+     * and if the file has duplicate individual identifiers in the
+     * second white-space delimited column
+     * @throws NullPointerException if {@code samples == null}
      */
     public NuclearFamilies(Samples samples, File pedFile) {
-        this.pedFile = pedFile;
         this.samples = samples;
         this.father = new int[samples.nSamples()];
         this.mother = new int[samples.nSamples()];
@@ -86,36 +86,11 @@ public class NuclearFamilies {
                 trioOffspring);
     }
 
-    private int[] counts(boolean[] isParent, int[] fathers, int[] mothers) {
-        assert isParent.length==fathers.length;
-        assert isParent.length==mothers.length;
-        int[] cnts = new int[3];
-        for (int j=0; j<isParent.length; ++j) {
-            int nParents = 0;
-            if (fathers[j] >= 0) {
-                ++nParents;
-            }
-            if (mothers[j] >= 0) {
-                ++nParents;
-            }
-            if (nParents==0) {
-                if (isParent[j]==false) {
-                    ++cnts[0];  // increment single count, cnts[0]
-                }
-            }
-            else {
-                // increment duo count, cnts[1], or trio count, cnt[2]
-                ++cnts[nParents];
-            }
-        }
-        return cnts;
-    }
-
     private static void identifyParents(Samples samples, File pedFile,
             boolean[] isParent, int[] father, int[] mother) {
         String MISSING_PARENT = "0";
         boolean[] idHasBeenProcessed = new boolean[samples.nSamples()];
-        try (FileIterator<String> pedIt=InputIterator.fromGzipFile(pedFile)) {
+        try (FileIt<String> pedIt=InputIt.fromGzipFile(pedFile)) {
             while (pedIt.hasNext()) {
                 String line = pedIt.next().trim();
                 if (line.length() > 0) {
@@ -162,6 +137,31 @@ public class NuclearFamilies {
         return fields;
     }
 
+    private int[] counts(boolean[] isParent, int[] fathers, int[] mothers) {
+        assert isParent.length==fathers.length;
+        assert isParent.length==mothers.length;
+        int[] cnts = new int[3];
+        for (int j=0; j<isParent.length; ++j) {
+            int nParents = 0;
+            if (fathers[j] >= 0) {
+                ++nParents;
+            }
+            if (mothers[j] >= 0) {
+                ++nParents;
+            }
+            if (nParents==0) {
+                if (isParent[j]==false) {
+                    ++cnts[0];  // increment single count, cnts[0]
+                }
+            }
+            else {
+                // increment duo count, cnts[1], or trio count, cnt[2]
+                ++cnts[nParents];
+            }
+        }
+        return cnts;
+    }
+
     private static void fillArrays(Samples samples, boolean[] isParent,
             int[] father, int[] mother, int[] single,
             int[] duoOffspring, int[] trioOffspring) {
@@ -185,7 +185,7 @@ public class NuclearFamilies {
                 default:
                     assert false;
             }
-        };
+        }
         assert singleIndex==single.length;
         assert duoIndex==duoOffspring.length;
         assert trioIndex==trioOffspring.length;
@@ -204,7 +204,7 @@ public class NuclearFamilies {
 
     /**
      * Returns the list of samples.
-     * @return the list of samples.
+     * @return the list of samples
      */
     public Samples samples() {
         return samples;
@@ -212,26 +212,16 @@ public class NuclearFamilies {
 
     /**
      * Returns the number of samples.
-     * @return the number of samples.
+     * @return the number of samples
      */
     public int nSamples() {
         return samples.nSamples();
     }
 
     /**
-     * Returns the pedigree file, or returns {@code null} if no
-     * pedigree file was specified.
-     * @return the pedigree file, or {@code null} if no pedigree
-     * file was specified.
-     */
-    public File pedFile() {
-        return pedFile;
-    }
-
-    /**
      * Returns the number of single individuals in the list of samples.
      * A single individual has no parent or offspring in the list of samples.
-     * @return the number of single individuals in the sample.
+     * @return the number of single individuals in the sample
      */
     public int nSingles() {
         return single.length;
@@ -241,7 +231,7 @@ public class NuclearFamilies {
      * Returns the number of parent-offspring duos in the list of samples.
      * The offspring of a parent-offspring duo has only one parent
      * in the sample.
-     * @return the number of parent-offspring duos in the list of samples.
+     * @return the number of parent-offspring duos in the list of samples
      */
     public int nDuos() {
         return duoOffspring.length;
@@ -251,7 +241,7 @@ public class NuclearFamilies {
      * Returns the number of parent-offspring trios in the list of samples.
      * The offspring of a parent-offspring trio has two parents
      * in the sample.
-     * @return the number of parent-offspring trios in the list of samples.
+     * @return the number of parent-offspring trios in the list of samples
      */
     public int nTrios() {
         return trioOffspring.length;
@@ -261,10 +251,10 @@ public class NuclearFamilies {
      * Returns the sample index of the specified single individual.
      * A single individual has no first-degree relative in the list of
      * samples.
-     * @param index the index of a single individual.
-     * @return the sample index of the specified single individual.
+     * @param index the index of a single individual
+     * @return the sample index of the specified single individual
      * @throws IndexOutOfBoundsException if
-     * {@code index<0 || index>=this.nSingles()}.
+     * {@code index < 0 || index >= this.nSingles()}
      */
     public int single(int index) {
         return single[index];
@@ -273,11 +263,11 @@ public class NuclearFamilies {
     /**
      * Returns the sample index of the parent of the specified
      * parent-offspring duo.
-     * @param index the index of a parent-offspring duo.
+     * @param index the index of a parent-offspring duo
      * @return the sample index of the parent of the specified
-     * parent-offspring duo.
+     * parent-offspring duo
      * @throws IndexOutOfBoundsException if
-     * {@code index<0 || index>=this.nDuos()}.
+     * {@code index < 0 || index >= this.nDuos()}
      */
     public int duoParent(int index) {
         int offspring = duoOffspring[index];
@@ -293,11 +283,11 @@ public class NuclearFamilies {
     /**
      * Returns the sample index of the offspring of the specified
      * parent-offspring duo.
-     * @param index the index of a parent-offspring duo.
+     * @param index the index of a parent-offspring duo
      * @return the sample index of the offspring of the specified
-     * parent-offspring duo.
+     * parent-offspring duo
      * @throws IndexOutOfBoundsException if
-     * {@code index<0 || index>=this.nDuos()}.
+     * {@code index < 0 || index >= this.nDuos()}
      */
     public int duoOffspring(int index) {
         return duoOffspring[index];
@@ -306,11 +296,11 @@ public class NuclearFamilies {
     /**
      * Returns the sample index of the father of the specified
      * parent-offspring trio.
-     * @param index the index of a parent-offspring trio.
+     * @param index the index of a parent-offspring trio
      * @return the sample index of the father of the specified
-     * parent-offspring trio.
+     * parent-offspring trio
      * @throws IndexOutOfBoundsException if
-     * {@code index<0 || index>=this.nTrios()}.
+     * {@code index < 0 || index >= this.nTrios()}
      */
     public int trioFather(int index) {
         return father[trioOffspring[index]];
@@ -319,11 +309,11 @@ public class NuclearFamilies {
     /**
      * Returns the sample index of the mother of the specified
      * parent-offspring trio.
-     * @param index the index of a parent-offspring trio.
+     * @param index the index of a parent-offspring trio
      * @return the sample index of the mother of the specified
-     * parent-offspring trio.
+     * parent-offspring trio
      * @throws IndexOutOfBoundsException if
-     * {@code index<0 || index>=this.nTrios()}.
+     * {@code index < 0 || index >= this.nTrios()}
      */
     public int trioMother(int index) {
         return mother[trioOffspring[index]];
@@ -332,11 +322,11 @@ public class NuclearFamilies {
     /**
      * Returns the sample index of the offspring of the specified
      * parent-offspring trio.
-     * @param index the index of a parent-offspring trio.
+     * @param index the index of a parent-offspring trio
      * @return the sample index of the offspring of the specified
-     * parent-offspring trio.
+     * parent-offspring trio
      * @throws IndexOutOfBoundsException if
-     * {@code index<0 || index>=this.nTrios()}.
+     * {@code index < 0 || index >= this.nTrios()}
      */
     public int trioOffspring(int index) {
         return trioOffspring[index];
@@ -346,12 +336,12 @@ public class NuclearFamilies {
      * Returns the sample index of the father of the specified sample,
      * or returns {@code -1} if the father is unknown or is not present
      * in the list of samples.
-     * @param sample a sample index.
+     * @param sample a sample index
      * @return the sample index of the father of the specified sample,
-     * or returns {@code -1} if the father is unknown or is not present in
-     * the list of samples.
+     * or {@code -1} if the father is unknown or is not present in
+     * the list of samples
      * @throws IndexOutOfBoundsException if
-     * {@code sample<0 || sample>=this.nSamples()()}.
+     * {@code sample < 0 || sample >= this.nSamples()()}
      */
     public int father(int sample) {
         return father[sample];
@@ -361,14 +351,24 @@ public class NuclearFamilies {
      * Returns the sample index of the mother of the specified sample,
      * or returns {@code -1} if the mother is unknown or is not present
      * in the list of samples.
-     * @param sample a sample index.
+     * @param sample a sample index
      * @return the sample index of the mother of the specified sample,
-     * or returns {@code -1} if the mother is unknown or is not present
-     * in the list of samples.
+     * or {@code -1} if the mother is unknown or is not present
+     * in the list of samples
      * @throws IndexOutOfBoundsException if
-     * {@code sample<0 || sample>=this.nSamples()()}.
+     * {@code sample < 0 || sample >= this.nSamples()()}
      */
     public int mother(int sample) {
         return mother[sample];
+    }
+
+    /**
+     * Returns a string representation of {@code this}.  The exact details of
+     * the representation are unspecified and subject to change.
+     * @return a string representation of {@code this}
+     */
+    @Override
+    public String toString() {
+        return this.getClass().toString();
     }
 }

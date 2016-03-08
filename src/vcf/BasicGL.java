@@ -22,7 +22,7 @@ import beagleutil.Samples;
 import blbutil.Const;
 
 /**
- * <p>HClass {@code BasicGL} represents genotype emission probabilities
+ * <p>Class {@code BasicGL} represents genotype emission probabilities
  * for a set of samples.
  * </p>
  * Instances of class {@code GL} are immutable.
@@ -39,13 +39,13 @@ public final class BasicGL implements GL {
     /**
      * Returns the genotype index corresponding to the
      * specified unordered alleles.
-     * @param a1 the first allele index of an unordered genotype.
-     * @param a2 the second allele index of an unordered genotype.
+     * @param a1 the first allele index of an unordered genotype
+     * @param a2 the second allele index of an unordered genotype
      * @return the genotype index corresponding to the
-     * specified unordered alleles.
-     * @throws IllegalArgumentException if {@code a1 < 0 || a2 < 0}.
+     * specified unordered alleles
+     * @throws IllegalArgumentException if {@code a1 < 0 || a2 < 0}
      */
-    public static int genotype(byte a1, byte a2) {
+    public static int genotype(int a1, int a2) {
         if (a1<=a2) {
             if (a1 < 0) {
                 String s = "allele < 0: " + a1 + " " + a2;
@@ -65,23 +65,22 @@ public final class BasicGL implements GL {
     /**
      * Constructs a {@code BasicGL} instance.
      *
-     * @param samples the list of samples with genotype data.
-     * @param vma genotype emission probabilities.  Each array element
-     * stores genotype emission probabilities for a single marker.
-     * Array elements corresponding to the same chromosome must be
-     * contiguous and sorted in chromosome position order.
+     * @param samples the list of samples with genotype data
+     * @param vma genotype emission probabilities
      *
      * @throws IllegalArgumentException
      * if elements of {@code vma} corresponding to the same chromosome
-     * are not contiguous and sorted in chromosome position order, or if any
-     * two {@code vma} elements correspond to the same genetic marker.
+     * are not contiguous and sorted in chromosome position order
+     * @throws IllegalArgumentException if any
+     * two {@code vma} elements correspond to the same genetic marker
      * @throws IllegalArgumentException if
-     * {@code vma[j].samples().equals(samples)==false} for some
-     * {@code 0<=j && j<vma.length}.
+     * {@code vma[j].samples().equals(samples) == false} for any {@code j}
+     * satisfying {@code 0 <= j && j < vma.length}
      *
-     * @throws NullPointerException if {@code samples==null}.
-     * @throws NullPointerException if {@code vma==null}
-     * or if any array element is {@code null}.
+     * @throws NullPointerException if {@code samples == null}
+     * @throws NullPointerException if {@code vma == null}
+     * @throws NullPointerException if {@code vma[j] == null} any {@code j}
+     * satisfying {@code 0 <= j && j < vma.length}
      */
     public BasicGL(Samples samples, VcfEmission[] vma) {
         checkSamples(samples, vma);
@@ -104,7 +103,7 @@ public final class BasicGL implements GL {
         for (int j=0; j<markers.length; ++j) {
             markers[j] = vma[j].marker();
         }
-        return new Markers(markers);
+        return Markers.create(markers);
     }
 
     private static boolean isRefData(VcfEmission[] vma) {
@@ -123,18 +122,28 @@ public final class BasicGL implements GL {
     }
 
     @Override
-    public float gl(int marker, int sample, byte allele1, byte allele2) {
+    public float gl(int marker, int sample, int allele1, int allele2) {
         return vma[marker].gl(sample, allele1, allele2);
     }
 
     @Override
-    public byte allele1(int marker, int sample) {
+    public boolean isPhased(int marker, int sample) {
+        return vma[marker].isPhased(sample);
+    }
+
+    @Override
+    public int allele1(int marker, int sample) {
         return vma[marker].allele1(sample);
     }
 
     @Override
-    public byte allele2(int marker, int sample) {
+    public int allele2(int marker, int sample) {
         return vma[marker].allele2(sample);
+    }
+
+    @Override
+    public int allele(int marker, int hap) {
+        return vma[marker].allele(hap);
     }
 
     @Override
@@ -150,6 +159,11 @@ public final class BasicGL implements GL {
     @Override
     public Markers markers() {
         return markers;
+    }
+
+    @Override
+    public int nHaps() {
+        return 2*samples.nSamples();
     }
 
     @Override

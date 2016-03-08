@@ -22,8 +22,7 @@ import beagleutil.Samples;
 
 /**
  * <p>Class {@code NoPhaseGL} is a wrapper for a {@code GL}
- * instance.  The wrapper's {@code gl()} method ignores genotype phase
- * information in the wrapped object.
+ * instance that hides all genotype phase data in the wrapped object.
  * </p>
  * <p>Instances of class {@code NoPhaseGL} are immutable.
  * </p>
@@ -36,8 +35,8 @@ public class NoPhaseGL implements GL {
     /**
      * Constructs a new {@code NoPhaseGL} instance.
      * @param gl genotype emission probabilities that will be wrapped by
-     * the new instance.
-     * @throws NullPointerException if {@code gl==null}.
+     * the new instance
+     * @throws NullPointerException if {@code gl == null}
      */
     public NoPhaseGL(GL gl) {
         if (gl==null) {
@@ -47,7 +46,7 @@ public class NoPhaseGL implements GL {
     }
 
     @Override
-    public float gl(int marker, int sample, byte a1, byte a2) {
+    public float gl(int marker, int sample, int a1, int a2) {
         if (a1==a2) {
             return gl.gl(marker, sample, a1, a2);
         }
@@ -64,13 +63,24 @@ public class NoPhaseGL implements GL {
     }
 
     @Override
-    public byte allele1(int marker, int sample) {
+    public boolean isPhased(int marker, int sample) {
+        return false;
+    }
+
+    @Override
+    public int allele1(int marker, int sample) {
         return gl.allele1(marker, sample);
     }
 
     @Override
-    public byte allele2(int marker, int sample) {
+    public int allele2(int marker, int sample) {
         return gl.allele2(marker, sample);
+    }
+
+
+    @Override
+    public int allele(int marker, int hap) {
+        return gl.allele(marker, hap);
     }
 
     @Override
@@ -86,6 +96,11 @@ public class NoPhaseGL implements GL {
     @Override
     public Markers markers() {
         return gl.markers();
+    }
+
+    @Override
+    public int nHaps() {
+        return gl.nHaps();
     }
 
     @Override

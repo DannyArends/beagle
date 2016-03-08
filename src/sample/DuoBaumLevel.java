@@ -24,45 +24,48 @@ import vcf.BasicGL;
 import vcf.GL;
 
 /**
- * Class {@code DuoBaumLevel} computes forward and backward Baum
+ * <p>Class {@code DuoBaumLevel} computes forward and backward Baum
  * values at a level of a hidden Markov model (HMM) whose states are
  * ordered edge trios of a leveled directed acyclic graph (DAG).
+ * </p>
+ * <p>Instances of class {@code SingleBaumLevel} are not thread-safe.
+ * </p>
  *
  * @author Brian L. Browning {@code <browning@uw.edu>}
  */
 public class DuoBaumLevel {
 
     private static final int INITIAL_CAPACITY = 400;
-    private static final double MIN_VALUE = 100*Double.MIN_VALUE;
+    private static final float MIN_VALUE = 100*Float.MIN_VALUE;
     private final Dag dag;
     private final GL gl;
 
     private int marker = -1;
     private int sampleA = -1;
     private int sampleB = -1;
-    private int size=0;
+    private int size = 0;
 
     private int capacity = INITIAL_CAPACITY;
     private int[] edgesAB1 = new int[INITIAL_CAPACITY];
     private int[] edgesA2 = new int[INITIAL_CAPACITY];
     private int[] edgesB2 = new int[INITIAL_CAPACITY];
-    private double[] fwdValues = new double[INITIAL_CAPACITY];
-    private double[] bwdValues = new double[INITIAL_CAPACITY];
-    private double fwdValueSum = 0.0;
-    private double bwdValueSum = 0.0;
+    private float[] fwdValues = new float[INITIAL_CAPACITY];
+    private float[] bwdValues = new float[INITIAL_CAPACITY];
+    private float fwdValueSum = 0f;
+    private float bwdValueSum = 0f;
 
     private int nGenotypes = 0;
-    private double[] gtProbsA = new double[3];
-    private double[] gtProbsB = new double[3];
+    private float[] gtProbsA = new float[3];
+    private float[] gtProbsB = new float[3];
 
     /**
-     * Constructs a {@code DuoBaumLevel} instance.
+     * Constructs a new {@code DuoBaumLevel} instance from the specified data.
      * @param dag the directed acyclic graph that the determines transition
-     * probabilities.
-     * @param gl the emission probabilities.
+     * probabilities
+     * @param gl the emission probabilities
      * @throws IllegalArgumentException if
-     * {@code dag.markers().equals(gl.markers())==false}
-     * @throws NullPointerException if {@code dag==null || gl==null}
+     * {@code dag.markers().equals(gl.markers()) == false}
+     * @throws NullPointerException if {@code dag == null || gl == null}
      */
     public DuoBaumLevel(Dag dag, GL gl) {
         if (dag.markers().equals(gl.markers())==false) {
@@ -73,38 +76,28 @@ public class DuoBaumLevel {
     }
 
     /**
-     * Initializes the node trio values for the Baum forward algorithm.
-     *
-     * @param nodes the node trio values to be initialized.
-     */
-    public static void initializeNodes(DuoNodes nodes) {
-        nodes.clear();
-        nodes.sumUpdate(0, 0, 0, 1.0);
-    }
-
-    /**
      * Sets the Baum forward algorithm values for this level of the HMM
      * and records the child node trio values in the specified
-     * {@code nodes} parameter.
+     * {@code nodes} parameter. When the method call returns, the {@code nodes}
+     * parameter will be reset to the child node trio values for this level of
+     * the HMM.
      *
-     * @param nodes child node trio values at the previous level of HMM.  When
-     * the method call returns, this parameter will be reset to the child
-     * node trio values for this level of the HMM.
+     * @param nodes child node trio values at the previous level of the HMM
      * @param marker the level of the HMM at which the Baum forward algorithm
-     * probabilities will be computed.
-     * @param sampleA the parent's sample index.
-     * @param sampleB the offspring's sample index.
+     * probabilities will be computed
+     * @param sampleA the parent sample index
+     * @param sampleB the offspring sample index
      *
      * @throws IndexOutOfBoundsException if
-     * {@code marker<0 || marker>=this.dag().nMarkers()}
+     * {@code marker < 0 || marker >= this.dag().nMarkers()}
      * @throws IndexOutOfBoundsException if
-     * {@code sampleA<0 || sampleA>=this.gl().nSamples()}
+     * {@code sampleA < 0 || sampleA >= this.gl().nSamples()}
      * @throws IndexOutOfBoundsException if
-     * {@code sampleB<0 || sampleB>=this.gl().nSamples()}
+     * {@code sampleB < 0 || sampleB >= this.gl().nSamples()}
      * @throws IndexOutOfBoundsException if any node in any node trio with
      * non-zero value is not a valid parent node at the specified level of the
      * HMM
-     * @throws NullPointerException if {@code nodes==null}
+     * @throws NullPointerException if {@code nodes == null}
      */
     public void setForwardValues(DuoNodes nodes, int marker, int sampleA,
             int sampleB) {
@@ -113,9 +106,9 @@ public class DuoBaumLevel {
         this.sampleB = sampleB;
         this.nGenotypes = gl.marker(marker).nGenotypes();
         this.size = 0;
-        this.fwdValueSum = 0.0;
-        this.bwdValueSum = 0.0;
-        initializeGtProbs(); // called here due to gtProbs[AB]() contracts
+        this.fwdValueSum = 0f;
+        this.bwdValueSum = 0f;
+        initializeGtProbs(); // initialized here due to gtProbs() contract
         setStates(nodes);
         setChildNodes(nodes);
     }
@@ -123,44 +116,44 @@ public class DuoBaumLevel {
     private void initializeGtProbs() {
         if (gtProbsA.length < nGenotypes) {
             int newLength = Math.max(nGenotypes, (3*gtProbsA.length/2 + 1));
-            gtProbsA = new double[newLength];
-            gtProbsB = new double[newLength];
+            gtProbsA = new float[newLength];
+            gtProbsB = new float[newLength];
         }
         else {
             for (int j=0; j<nGenotypes; ++j) {
-                gtProbsA[j] = 0.0;
-                gtProbsB[j] = 0.0;
+                gtProbsA[j] = 0f;
+                gtProbsB[j] = 0f;
             }
         }
     }
 
     private void setStates(DuoNodes nodes) {
-        double valueSum = 0.0;
+        float valueSum = 0f;
         for (int j=0, n=nodes.size(); j<n; ++j) {
             int nodeAB1 = nodes.enumNodeAB1(j);
             int nodeA2 = nodes.enumNodeA2(j);
             int nodeB2 = nodes.enumNodeB2(j);
-            double nodeValue = nodes.enumValue(j);
+            float nodeValue = nodes.enumValue(j);
             for (int ab1=0, nAB1=dag.nOutEdges(marker, nodeAB1); ab1<nAB1; ++ab1) {
                 int edgeAB1 = dag.outEdge(marker, nodeAB1, ab1);
-                byte symbolAB1 = dag.symbol(marker, edgeAB1);
+                int symbolAB1 = dag.symbol(marker, edgeAB1);
                 for (int a2=0, nA2=dag.nOutEdges(marker, nodeA2); a2<nA2; ++a2) {
                     int edgeA2 = dag.outEdge(marker, nodeA2, a2);
-                    byte symbolA2 = dag.symbol(marker, edgeA2);
+                    int symbolA2 = dag.symbol(marker, edgeA2);
                     float epA = gl.gl(marker, sampleA, symbolAB1, symbolA2);
                     if (epA > 0.0) {
                         for (int b2=0, nB2=dag.nOutEdges(marker, nodeB2); b2<nB2; ++b2) {
                             int edgeB2 = dag.outEdge(marker, nodeB2, b2);
-                            byte symbolB2 = dag.symbol(marker, edgeB2);
+                            int symbolB2 = dag.symbol(marker, edgeB2);
                             float epB = gl.gl(marker, sampleB, symbolAB1, symbolB2);
                             if (epB > 0.0) {
                                 if (size == capacity) {
                                     ensureCapacity(size+1);
                                 }
-                                double tpAB1 = dag.condEdgeProb(marker, edgeAB1);
-                                double tpA2 = dag.condEdgeProb(marker, edgeA2);
-                                double tpB2 = dag.condEdgeProb(marker, edgeB2);
-                                double fwdValue = (epA * epB) * nodeValue
+                                float tpAB1 = dag.condEdgeProb(marker, edgeAB1);
+                                float tpA2 = dag.condEdgeProb(marker, edgeA2);
+                                float tpB2 = dag.condEdgeProb(marker, edgeB2);
+                                float fwdValue = (epA * epB) * nodeValue
                                         * (tpAB1 * tpA2 * tpB2);
                                 if (fwdValue<MIN_VALUE && nodeValue > 0.0) {
                                     fwdValue = MIN_VALUE;
@@ -187,9 +180,9 @@ public class DuoBaumLevel {
      * Stores the Baum forward algorithm child node trio values for this
      * level of the HMM in the specified {@code DuoNodes} object.
      *
-     * @param nodes the node trio values that will be set.
+     * @param nodes the node trio values that will be set
      *
-     * @throws NullPointerException if {@code nodes==null}
+     * @throws NullPointerException if {@code nodes == null}
      */
     public void setChildNodes(DuoNodes nodes) {
         nodes.clear();
@@ -202,75 +195,56 @@ public class DuoBaumLevel {
     }
 
     /**
-     * Initializes the node trio values for the Baum backward algorithm.
-     *
-     * @param nodes the node trio values to be initialized.
-     * @throws NullPointerException if {@code nodes==null}
-     */
-    public void setInitialBackwardValues(DuoNodes nodes) {
-        nodes.clear();
-        for (int j=0; j<size; ++j) {
-            int nodeAB1 = dag.childNode(marker, edgesAB1[j]);
-            int nodeA2 = dag.childNode(marker, edgesA2[j]);
-            int nodeB2 = dag.childNode(marker, edgesB2[j]);
-            nodes.maxUpdate(nodeAB1, nodeA2, nodeB2, 1.0);
-        }
-        setBackwardValues(nodes);
-    }
-
-    /**
      * Sets the Baum backward algorithm values for this level of the HMM
      * and stores the parent node trio values in the specified
-     * {@code nodes} parameter.
+     * {@code nodes} parameter. When the method call returns, the
+     * ${@code nodes} parameter will be reset to the parent node trio values
+     * for this level of the HMM.
      *
-     * @param nodes parent node trio values at the next level of HMM.  When
-     * the method call returns, this parameter will be reset to the parent
-     * node trio values for this level of the HMM.
+     * @param nodes parent node trio values at the next level of HMM
      *
      * @throws IndexOutOfBoundsException if any node in any node trio with
-     * non-zero value is not a valid child node at the {@code this.marker()}
-     * level of the HMM
-     * @throws NullPointerException if {@code nodes==null}
+     * non-zero value is not a valid child node at this level of the HMM
+     * @throws NullPointerException if {@code nodes == null}
      */
     public void setBackwardValues(DuoNodes nodes) {
-        bwdValueSum = 0.0;
-        double gtProbsSum = 0.0;
         for (int j=0; j<size; ++j) {
             int nodeAB1 = dag.childNode(marker, edgesAB1[j]);
             int nodeA2 = dag.childNode(marker, edgesA2[j]);
             int nodeB2 = dag.childNode(marker, edgesB2[j]);
-            double backwardValue = nodes.value(nodeAB1, nodeA2, nodeB2);
+            float backwardValue = nodes.value(nodeAB1, nodeA2, nodeB2);
             bwdValues[j] = backwardValue;
             bwdValueSum += backwardValue;
         }
         nodes.clear();
+        float gtProbsSum = 0f;
         for (int j=0; j<size; ++j) {
             bwdValues[j] /= bwdValueSum;
-            byte symbolAB1 = symbolAB1(j);
-            byte symbolA2 = symbolA2(j);
-            byte symbolB2 = symbolB2(j);
-            int nodeAB1 = dag.parentNode(marker, edgesAB1[j]);
-            int nodeA2 = dag.parentNode(marker, edgesA2[j]);
-            int nodeB2 = dag.parentNode(marker, edgesB2[j]);
-            double tpAB1 = dag.condEdgeProb(marker, edgesAB1[j]);
-            double tpA2 = dag.condEdgeProb(marker, edgesA2[j]);
-            double tpB2 = dag.condEdgeProb(marker, edgesB2[j]);
+            int symbolAB1 = symbolAB1(j);
+            int symbolA2 = symbolA2(j);
+            int symbolB2 = symbolB2(j);
+            float tpAB1 = dag.condEdgeProb(marker, edgesAB1[j]);
+            float tpA2 = dag.condEdgeProb(marker, edgesA2[j]);
+            float tpB2 = dag.condEdgeProb(marker, edgesB2[j]);
 
-            double stateProb = fwdValues[j] * bwdValues[j];
+            float stateProb = fwdValues[j] * bwdValues[j];
             int gtIndexA = BasicGL.genotype(symbolAB1, symbolA2);
             int gtIndexB = BasicGL.genotype(symbolAB1, symbolB2);
-            // gtProbsA, gtProbsB initialized in setForwardValues() method
+            // gtProbs[AB] assumed to be initialized in setForwardValues() method
             gtProbsA[gtIndexA] += stateProb;
             gtProbsB[gtIndexB] += stateProb;
             gtProbsSum += stateProb;
 
-            double epA = gl.gl(marker, sampleA, symbolAB1, symbolA2);
-            double epB = gl.gl(marker, sampleB, symbolAB1, symbolB2);
-            double bwdValue = bwdValues[j] * (tpAB1 * tpA2 * tpB2) * (epA*epB);
-            if (bwdValue<MIN_VALUE && bwdValues[j]>0.0) {
+            float epA = gl.gl(marker, sampleA, symbolAB1, symbolA2);
+            float epB = gl.gl(marker, sampleB, symbolAB1, symbolB2);
+            float bwdValue = bwdValues[j] * (tpAB1 * tpA2 * tpB2) * (epA*epB);
+            if (bwdValue < MIN_VALUE && bwdValues[j] > 0f) {
                 bwdValue = MIN_VALUE;
             }
-            nodes.sumUpdate(nodeAB1, nodeA2, nodeB2, bwdValue);
+            int pnAB1 = dag.parentNode(marker, edgesAB1[j]);
+            int pnA2 = dag.parentNode(marker, edgesA2[j]);
+            int pnB2 = dag.parentNode(marker, edgesB2[j]);
+            nodes.sumUpdate(pnAB1, pnA2, pnB2, bwdValue);
         }
         for (int j=0; j<nGenotypes; ++j) {
             gtProbsA[j] /= gtProbsSum;
@@ -282,7 +256,7 @@ public class DuoBaumLevel {
      * Returns the directed acyclic graph that determines the transition
      * probabilities.
      * @return the directed acyclic graph that determines the transition
-     * probabilities.
+     * probabilities
      */
     public Dag dag() {
         return dag;
@@ -290,7 +264,7 @@ public class DuoBaumLevel {
 
     /**
      * Returns the emission probabilities.
-     * @return the emission probabilities.
+     * @return the emission probabilities
      */
     public GL gl() {
         return gl;
@@ -298,7 +272,7 @@ public class DuoBaumLevel {
 
     /**
      * Return the level of the HMM.
-     * @return the level of the HMM.
+     * @return the level of the HMM
      */
     public int marker() {
         return marker;
@@ -306,7 +280,7 @@ public class DuoBaumLevel {
 
     /**
      * Return the number of possible genotypes at this level of the HMM.
-     * @return the number of possible genotypes at this level of the HMM.
+     * @return the number of possible genotypes at this level of the HMM
      */
     public int nGenotypes() {
         return nGenotypes;
@@ -315,12 +289,12 @@ public class DuoBaumLevel {
     /**
      * Returns the specified posterior genotype probability for the parent.
      * Returns 0 if the Baum backward probabilities have not been set.
-     * @param gt a genotype index.
-     * @return the specified posterior genotype probability for the parent.
+     * @param gt a genotype index
+     * @return the specified posterior genotype probability for the parent
      * @throws IndexOutOfBoundsException if
-     * {@code gt<0 || gt>=this.nGenotypes()}
+     * {@code gt < 0 || gt >= this.nGenotypes()}
      */
-    public double gtProbsA(int gt) {
+    public float gtProbsA(int gt) {
         checkGT(gt);
         return gtProbsA[gt];
     }
@@ -328,12 +302,12 @@ public class DuoBaumLevel {
     /**
      * Returns the specified posterior genotype probability for the offspring.
      * Returns 0 if the Baum backward probabilities have not been set.
-     * @param gt a genotype index.
-     * @return the specified posterior genotype probability for the offspring.
+     * @param gt a genotype index
+     * @return the specified posterior genotype probability for the offspring
      * @throws IndexOutOfBoundsException if
-     * {@code gt<0 || gt>=this.nGenotypes()}
+     * {@code gt < 0 || gt >= this.nGenotypes()}
      */
-    public double gtProbsB(int gt) {
+    public float gtProbsB(int gt) {
         checkGT(gt);
         return gtProbsB[gt];
     }
@@ -349,7 +323,7 @@ public class DuoBaumLevel {
      * this level of the HMM.
      *
      * @return the number of states with nonzero forward probability at
-     * this level of the HMM.
+     * this level of the HMM
      */
     public int size() {
         return size;
@@ -362,15 +336,14 @@ public class DuoBaumLevel {
     }
 
     /**
-     * Returns the DAG level edge index for the first edge of the
-     * specified HMM state with nonzero forward probability.
-     * @param state an index of a HMM state at this level with nonzero
-     * forward probability.
-     * @return the DAG level edge index for the first edge of the
-     * specified HMM state with nonzero forward probability.
+     * Returns the first edge of the specified HMM state with nonzero forward
+     * probability.
+     * @param state an index of a HMM state with nonzero forward probability
+     * @return the first edge of the specified HMM state with nonzero forward
+     * probability
      *
      * @throws IndexOutOfBoundsException if
-     * {@code state<0 || state>=this.size()}
+     * {@code state < 0 || state >= this.size()}
      */
     public int edgeAB1(int state) {
         checkIndex(state);
@@ -378,15 +351,14 @@ public class DuoBaumLevel {
     }
 
     /**
-     * Returns the DAG level edge index for the second edge of the
-     * specified HMM state with nonzero forward probability.
-     * @param state an index of a HMM state at this level with nonzero
-     * forward probability.
-     * @return the DAG level edge index for the second edge of the
-     * specified HMM state with nonzero forward probability.
+     * Returns the second edge of the specified HMM state with nonzero forward
+     * probability.
+     * @param state an index of a HMM state with nonzero forward probability
+     * @return the second edge of the specified HMM state with nonzero forward
+     * probability
      *
      * @throws IndexOutOfBoundsException if
-     * {@code state<0 || state>=this.size()}
+     * {@code state < 0 || state >= this.size()}
      */
     public int edgeA2(int state) {
         checkIndex(state);
@@ -394,15 +366,14 @@ public class DuoBaumLevel {
     }
 
     /**
-     * Returns the DAG level edge index for the third edge of the
-     * specified HMM state with nonzero forward probability.
-     * @param state an index of a HMM state at this level with nonzero
-     * forward probability.
-     * @return the DAG level edge index for the third edge of the
-     * specified HMM state with nonzero forward probability.
+     * Returns the third edge of the specified HMM state with nonzero forward
+     * probability.
+     * @param state an index of a HMM state with nonzero forward probability
+     * @return the third edge of the specified HMM state with nonzero forward
+     * probability
      *
      * @throws IndexOutOfBoundsException if
-     * {@code state<0 || state>=this.size()}
+     * {@code state < 0 || state >= this.size()}
      */
     public int edgeB2(int state) {
         checkIndex(state);
@@ -410,16 +381,15 @@ public class DuoBaumLevel {
     }
 
     /**
-     * Returns the DAG level parent node index for the parent node of the
-     * first edge of the specified HMM state with nonzero forward probability.
+     * Returns the parent node of the first edge of the specified HMM state
+     * with nonzero forward probability.
      *
-     * @param state an index of a HMM state at this level with nonzero
-     * forward probability.
-     * @return the DAG level parent node index for the parent node of the
-     * first edge of the specified HMM state with nonzero forward probability.
+     * @param state an index of a HMM state with nonzero forward probability
+     * @return the parent node of the first edge of the specified HMM state
+     * with nonzero forward probability
      *
      * @throws IndexOutOfBoundsException if
-     * {@code state<0 || state>=this.size()}
+     * {@code state < 0 || state >= this.size()}
      */
     public int parentNodeAB1(int state) {
         checkIndex(state);
@@ -427,16 +397,15 @@ public class DuoBaumLevel {
     }
 
     /**
-     * Returns the DAG level parent node index for the parent node of the
-     * second edge of the specified HMM state with nonzero forward probability.
+     * Returns the parent node of the second edge of the specified HMM state
+     * with nonzero forward probability.
      *
-     * @param state an index of a HMM state at this level with nonzero
-     * forward probability.
-     * @return the DAG level parent node index for the parent node of the
-     * second edge of the specified HMM state with nonzero forward probability.
+     * @param state an index of a HMM state with nonzero forward probability
+     * @return the parent node of the second edge of the specified HMM state
+     * with nonzero forward probability
      *
      * @throws IndexOutOfBoundsException if
-     * {@code state<0 || state>=this.size()}
+     * {@code state < 0 || state >= this.size()}
      */
     public int parentNodeA2(int state) {
         checkIndex(state);
@@ -444,16 +413,15 @@ public class DuoBaumLevel {
     }
 
     /**
-     * Returns the DAG level parent node index for the parent node of the
-     * third edge of the specified HMM state with nonzero forward probability.
+     * Returns the parent node of the third edge of the specified HMM state
+     * with nonzero forward probability.
      *
-     * @param state an index of a HMM state at this level with nonzero
-     * forward probability.
-     * @return the DAG level parent node index for the parent node of the
-     * third edge of the specified HMM state with nonzero forward probability.
+     * @param state an index of a HMM state with nonzero forward probability
+     * @return the parent node of the third edge of the specified HMM state
+     * with nonzero forward probability
      *
      * @throws IndexOutOfBoundsException if
-     * {@code state<0 || state>=this.size()}
+     * {@code state < 0 || state >= this.size()}
      */
     public int parentNodeB2(int state) {
         checkIndex(state);
@@ -461,16 +429,15 @@ public class DuoBaumLevel {
     }
 
     /**
-     * Returns the DAG level child node index for the child node of the
-     * first edge of the specified HMM state with nonzero forward probability.
+     * Returns the child node of the first edge of the specified HMM state
+     * with nonzero forward probability.
      *
-     * @param state an index of a HMM state at this level with nonzero
-     * forward probability.
-     * @return the DAG level child node index for the child node of the
-     * first edge of the specified HMM state with nonzero forward probability.
+     * @param state an index of a HMM state with nonzero forward probability
+     * @return the child node of the first edge of the specified HMM state
+     * with nonzero forward probability
      *
      * @throws IndexOutOfBoundsException if
-     * {@code state<0 || state>=this.size()}
+     * {@code state < 0 || state >= this.size()}
      */
     public int childNodeAB1(int state) {
         checkIndex(state);
@@ -478,16 +445,15 @@ public class DuoBaumLevel {
     }
 
     /**
-     * Returns the DAG level child node index for the child node of the
-     * second edge of the specified HMM state with nonzero forward probability.
+     * Returns the child node of the second edge of the specified HMM state
+     * with nonzero forward probability.
      *
-     * @param state an index of a HMM state at this level with nonzero
-     * forward probability.
-     * @return the DAG level child node index for the child node of the
-     * second edge of the specified HMM state with nonzero forward probability.
+     * @param state an index of a HMM state with nonzero forward probability
+     * @return the child node of the second edge of the specified HMM state
+     * with nonzero forward probability
      *
      * @throws IndexOutOfBoundsException if
-     * {@code state<0 || state>=this.size()}
+     * {@code state < 0 || state >= this.size()}
      */
     public int childNodeA2(int state) {
         checkIndex(state);
@@ -495,16 +461,15 @@ public class DuoBaumLevel {
     }
 
     /**
-     * Returns the DAG level child node index for the child node of the
-     * third edge of the specified HMM state with nonzero forward probability.
+     * Returns the child node of the third edge of the specified HMM state
+     * with nonzero forward probability.
      *
-     * @param state an index of a HMM state at this level with nonzero
-     * forward probability.
-     * @return the DAG level child node index for the child node of the
-     * third edge of the specified HMM state with nonzero forward probability.
+     * @param state an index of a HMM state with nonzero forward probability
+     * @return the child node of the third edge of the specified HMM state
+     * with nonzero forward probability
      *
      * @throws IndexOutOfBoundsException if
-     * {@code state<0 || state>=this.size()}
+     * {@code state < 0 || state >= this.size()}
      */
     public int childNodeB2(int state) {
         checkIndex(state);
@@ -515,15 +480,14 @@ public class DuoBaumLevel {
      * Returns the symbol for the first edge of the specified HMM state
      * with nonzero forward probability.
      *
-     * @param state an index of a HMM state at this level with nonzero
-     * forward probability.
+     * @param state an index of a HMM state with nonzero forward probability
      * @return the symbol for the first edge of the specified HMM state
-     * with nonzero forward probability.
+     * with nonzero forward probability
      *
      * @throws IndexOutOfBoundsException if
-     * {@code state<0 || state>=this.size()}
+     * {@code state < 0 || state >= this.size()}
      */
-    public byte symbolAB1(int state) {
+    public int symbolAB1(int state) {
         return dag.symbol(marker, edgeAB1(state));
     }
 
@@ -531,15 +495,14 @@ public class DuoBaumLevel {
      * Returns the symbol for the second edge of the specified HMM state
      * with nonzero forward probability.
      *
-     * @param state an index of a HMM state at this level with nonzero
-     * forward probability.
+     * @param state an index of a HMM state with nonzero forward probability
      * @return the symbol for the second edge of the specified HMM state
-     * with nonzero forward probability.
+     * with nonzero forward probability
      *
      * @throws IndexOutOfBoundsException if
-     * {@code state<0 || state>=this.size()}
+     * {@code state < 0 || state >= this.size()}
      */
-    public byte symbolA2(int state) {
+    public int symbolA2(int state) {
         return dag.symbol(marker, edgeA2(state));
     }
 
@@ -547,15 +510,14 @@ public class DuoBaumLevel {
      * Returns the symbol for the third edge of the specified HMM state
      * with nonzero forward probability.
      *
-     * @param state an index of a HMM state at this level with nonzero
-     * forward probability.
+     * @param state an index of a HMM state with nonzero forward probability
      * @return the symbol for the third edge of the specified HMM state
-     * with nonzero forward probability.
+     * with nonzero forward probability
      *
      * @throws IndexOutOfBoundsException if
-     * {@code state<0 || state>=this.size()}
+     * {@code state < 0 || state >= this.size()}
      */
-    public byte symbolB2(int state) {
+    public int symbolB2(int state) {
         return dag.symbol(marker, edgeB2(state));
     }
 
@@ -566,16 +528,15 @@ public class DuoBaumLevel {
      * forward value by the sum of the forward values at this level
      * of the HMM.
      *
-     * @param state an index of a HMM state at this level with nonzero
-     * forward probability.
+     * @param state an index of a HMM state with nonzero forward probability
      *
      * @return the normalized forward value for the specified HMM state
-     * with nonzero forward probability.
+     * with nonzero forward probability
      *
      * @throws IndexOutOfBoundsException if
-     * {@code state<0 || state>=this.size()}
+     * {@code state < 0 || state >= this.size()}
      */
-    public double forwardValue(int state) {
+    public float forwardValue(int state) {
         checkIndex(state);
         return fwdValues[state];
     }
@@ -587,36 +548,36 @@ public class DuoBaumLevel {
      * backward value by the sum of the backward values at this level
      * of the HMM.
      *
-     * @param state an index of a state with nonzero backward value.
+     * @param state an index of a state with nonzero forward probability
      *
      * @return the normalized backward value for the specified HMM state
-     * with nonzero forward probability.
+     * with nonzero forward probability
      *
      * @throws IndexOutOfBoundsException if
-     * {@code state<0 || state>=this.size()}
+     * {@code state < 0 || state >= this.size()}
      */
-    public double backwardValue(int state) {
+    public float backwardValue(int state) {
         checkIndex(state);
         return bwdValues[state];
     }
 
     /**
      * Returns the sum of the forward values at this level of the HMM
-     * when the forward values are computed using normalized forward values
+     * when the forward values are computed using forward values
      * from the previous level that are normalized to sum to 1.
-     * @return the sum of the forward values at this level of the HMM.
+     * @return the sum of the forward values at this level of the HMM
      */
-    public double forwardValuesSum() {
+    public float forwardValuesSum() {
         return fwdValueSum;
     }
 
     /**
      * Returns the sum of the backward values at this level of the HMM
-     * when the backward values are computed using normalized backward
+     * when the backward values are computed using backward
      * values from the next level that are normalized to sum to 1.
-     * @return the sum of the backward values at this level of the HMM.
+     * @return the sum of the backward values at this level of the HMM
      */
-    public double backwardValuesSum() {
+    public float backwardValuesSum() {
         return bwdValueSum;
     }
 
@@ -662,7 +623,7 @@ public class DuoBaumLevel {
      * Increases the state capacity of array fields as necessary
      * to be greater than or equal to the specified minimum capacity.
      *
-     * @param minCapacity the desired minimum state capacity.
+     * @param minCapacity the desired minimum state capacity
      */
     private void ensureCapacity(int minCapacity) {
         if (minCapacity > capacity) {

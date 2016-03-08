@@ -19,46 +19,49 @@
 package sample;
 
 /**
- * Class {@code SingleNodes} stores ordered node pairs and associated values.
+ * <p>Class {@code SingleNodes} stores ordered node pairs and associated values.
+ * </p>
+ * <p>Instances of class {@code SingleNodes} are not thread safe.</p>
  *
  * @author Brian L. Browning {@code <browning@uw.edu>}
  */
 public class SingleNodes {
 
-    private static final double loadFactor = 0.75;
+    private static final float loadFactor = 0.75f;
+
+    private int size;
+    private int capacity; // required to be a power of 2
+    private int rehashThreshold;
 
     private int[] index;
     private int[] node1;
     private int[] node2;
-    private double[] value;
-    private int size;
-    private int maxSize; // required to be a power of 2.
-    private int rehashThreshold;
-
+    private float[] value;
 
     /**
      * Creates a new instance of {@code SingleNodes} that has an
-     * initial value of 0 for each ordered node pair.
+     * initial value of 0 for each ordered node pair. The first node
+     * has index 0.
      */
     public SingleNodes() {
         this.size = 0;
-        this.maxSize = (1<<10);
-        this.rehashThreshold = (int) (loadFactor * maxSize);
-        this.index = new int[maxSize];
-        this.node1 = new int[maxSize];
-        this.node2 = new int[maxSize];
-        this.value = new double[maxSize];
+        this.capacity = (1<<10);
+        this.rehashThreshold = (int) (loadFactor * capacity);
+        this.index = new int[capacity];
+        this.node1 = new int[capacity];
+        this.node2 = new int[capacity];
+        this.value = new float[capacity];
     }
 
-    private static int hash1(int node1, int node2) {
-        int hash = 5;
+    private static long hash1(int node1, int node2) {
+        long hash = 5;
         hash = 71 * hash + node1;
         hash = 71 * hash + node2;
         return hash;
     }
 
-    private static int hash2(int node1, int node2) {
-        int hash = 7;
+    private static long hash2(int node1, int node2) {
+        long hash = 7;
         hash = 97 * hash + node1;
         hash = 97 * hash + node2;
         return hash;
@@ -70,21 +73,20 @@ public class SingleNodes {
      * should be stored is returned.
      */
     private int index(int node1, int node2) {
-        int h1 = hash1(node1, node2);
-        int h2 = hash2(node1, node2);
+        long h1 = hash1(node1, node2);
+        long h2 = hash2(node1, node2);
         if ((h2 & 1)==0) {
             // h2 must be relatively prime to maxSize, which is a power of 2
             ++h2;
         }
-        for (int k=0; k<maxSize; ++k) {
-            int i = (h1 + k*h2) % maxSize;
-            if (i<0) {
-                i = -i;
-            }
+        long l = h1;
+        for (int k=0; k<capacity; ++k) {
+            int i = (int) (l % capacity);
             if (value[i]==0.0
                     || (this.node1[i]==node1 && this.node2[i]==node2)) {
                 return i;
             }
+            l += h2;
         }
         assert false;
         return -1;
@@ -95,102 +97,70 @@ public class SingleNodes {
      */
     private void rehash() {
         assert this.size>=this.rehashThreshold;
-        int newMaxSize = 2*maxSize;
+        int newMaxSize = 2*capacity;
         if (newMaxSize<0) {
             throw new IllegalStateException("hash table overflow");
         }
-        int[] oldIndices = index;
+        int[] oldIndex = index;
         int[] oldNode1 = node1;
         int[] oldNode2 = node2;
-        double[] oldValue = value;
+        float[] oldValue = value;
 
-        maxSize = newMaxSize;
+        capacity = newMaxSize;
         index = new int[newMaxSize];
         node1 = new int[newMaxSize];
         node2 = new int[newMaxSize];
-        value = new double[newMaxSize];
+        value = new float[newMaxSize];
 
         for (int j=0; j<size; ++j) {
-            int oldIndex = oldIndices[j];
-            int newIndex = index(oldNode1[oldIndex], oldNode2[oldIndex]);
+            int oldInd = oldIndex[j];
+            int newIndex = index(oldNode1[oldInd], oldNode2[oldInd]);
             index[j] = newIndex;
-            node1[newIndex] = oldNode1[oldIndex];
-            node2[newIndex] = oldNode2[oldIndex];
-            value[newIndex] = oldValue[oldIndex];
+            node1[newIndex] = oldNode1[oldInd];
+            node2[newIndex] = oldNode2[oldInd];
+            value[newIndex] = oldValue[oldInd];
         }
-        rehashThreshold = (int) (loadFactor * maxSize);
+        rehashThreshold = (int) (loadFactor * capacity);
     }
 
     /**
-     * Sets the value of the specified node pair to the maximum
-     * of the node pair value immediately prior to method invocation
-     * and the specified value.
-     *
-     * @param node1 the first node.
-     * @param node2 the second node.
-     * @param value the value.
-     *
-     * @throws IllegalArgumentException if
-     * {@code value<0.0 || Double.isNaN(value)}
-     */
-    public void maxUpdate(int node1, int node2, double value) {
-        if (value>0.0) {
-            int i = index(node1, node2);
-            if (this.value[i]>0.0) {
-                if (value>this.value[i]) {
-                    this.value[i] = value;
-                }
-            }
-            else {
-                this.index[size++] = i;
-                this.node1[i] = node1;
-                this.node2[i] = node2;
-                this.value[i] = value;
-                if (this.size>=this.rehashThreshold) {
-                    rehash();
-                }
-            }
-        }
-        else if (value>=0.0==false) {
-            throw new IllegalArgumentException(String.valueOf(value));
-        }
-    }
-
-    /**
-     * Adds the specified value to the stored value of the specified
+     * Adds the specified positive value to the stored value of the specified
      * node pair.
      *
-     * @param node1 the first node.
-     * @param node2 the second node.
-     * @param value the value.
+     * @param node1 the first node
+     * @param node2 the second node
+     * @param value the value
      *
+     * @throws IllegalArgumentException if {@code node1 < 0 || node2 < 0}
      * @throws IllegalArgumentException if
-     * {@code value<0.0 || Double.isNaN(value)}
+     * {@code value <= 0 || (Double.isFinite(value) == false)}
      */
-    public void sumUpdate(int node1, int node2, double value) {
-        if (value>0.0) {
-            int i = index(node1, node2);
-            if (this.value[i]>0.0) {
-                this.value[i] += value;
-            }
-            else {
-                this.index[size++] = i;
-                this.node1[i] = node1;
-                this.node2[i] = node2;
-                this.value[i] += value;
-                if (this.size>=this.rehashThreshold) {
-                    rehash();
-                }
-            }
+    public void sumUpdate(int node1, int node2, float value) {
+        if (node1 < 0) {
+            throw new IllegalArgumentException(String.valueOf(node1));
         }
-        else if (value>=0.0==false) {
+        if (node2 < 0) {
+            throw new IllegalArgumentException(String.valueOf(node2));
+        }
+        if (value <= 0 || (Double.isFinite(value)==false) ) {
             throw new IllegalArgumentException(String.valueOf(value));
+        }
+        int i = index(node1, node2);
+        boolean addNode = (this.value[i]==0f);
+        this.value[i] += value;
+        if (addNode) {
+            this.index[size++] = i;
+            this.node1[i] = node1;
+            this.node2[i] = node2;
+            if (this.size>=this.rehashThreshold) {
+                rehash();
+            }
         }
     }
 
     /**
      * Returns the number of node pairs with non-zero value.
-     * @return the number of node pairs with non-zero value.
+     * @return the number of node pairs with non-zero value
      */
     public int size() {
         return size;
@@ -204,14 +174,21 @@ public class SingleNodes {
 
     /**
      * Returns the first node of the specified node pair in the list of
-     * node pairs with non-zero value.
+     * node pairs with non-zero value.  Repeated invocations of this
+     * method with the same parameter will return the same value if
+     * node values are not modified between invocations. If
+     * {@code (index >= 0 && index < this.size())}, then the following
+     * expression will always evaluate to {@code true}:<br>
+     * {@code (this.value(this.enumNode1(index),
+     * this.enumNode2(index)) == this.enumValue(index))}.
      *
-     * @param index an index in the list of node pairs with non-zero value.
-     * @return the first node of the specified node pair in the list of
-     * node pairs with non-zero value.
+     * @param index an index in a list of node pairs with non-zero
+     * value
+     * @return the first node of the specified node pair in a list of
+     * node pairs with non-zero value
      *
      * @throws IndexOutOfBoundsException if
-     * {@code index<0 || index>=this.size()}
+     * {@code index < 0 || index >= this.size()}
      */
     public int enumNode1(int index) {
         checkSize(index);
@@ -219,15 +196,21 @@ public class SingleNodes {
     }
 
     /**
-     * Returns the second node of the specified node pair in the list of
-     * node pairs with non-zero value.
+     * Returns the second node of the specified node pair in a list of
+     * node pairs with non-zero value.  Repeated invocations of this
+     * method with the same parameter will return the same value if
+     * node values are not modified between invocations. If
+     * {@code (index >= 0 && index < this.size())}, then the following
+     * expression will always evaluate to {@code true}:<br>
+     * {@code (this.value(this.enumNode1(index),
+     * this.enumNode2(index)) == this.enumValue(index))}.
      *
-     * @param index an index in the list of node pairs with non-zero value.
-     * @return the second node of the specified node pair in the list of
-     * node pairs with non-zero value.
+     * @param index an index in a list of node pairs with non-zero value
+     * @return the second node of the specified node pair in a list of
+     * node pairs with non-zero value
      *
      * @throws IndexOutOfBoundsException if
-     * {@code index<0 || index>=this.size()}
+     * {@code index < 0 || index >= this.size()}
      */
     public int enumNode2(int index) {
         checkSize(index);
@@ -235,38 +218,51 @@ public class SingleNodes {
     }
 
     /**
-     * Returns the value of the specified ordered node pair in the list of
-     * node pairs with non-zero value.
+     * Returns the value of the specified node pair in a list of
+     * node pairs with non-zero value.  Repeated invocations of this
+     * method with the same parameter will return the same value if
+     * node values are not modified between invocations. If
+     * {@code (index >= 0 && index < this.size())}, then the following
+     * expression will always evaluate to {@code true}:<br>
+     * {@code (this.value(this.enumNode1(index),
+     * this.enumNode2(index)) == this.enumValue(index))}.
      *
-     * @param index an index in the list of node pairs with non-zero value.
-     * @return the value of the specified ordered node pair in the list of
-     * node pairs with non-zero value.
+     * @param index an index in a list of node pairs with non-zero value
+     * @return the value of the specified ordered node pair in a list of
+     * node pairs with non-zero value
      *
      * @throws IndexOutOfBoundsException if
-     * {@code index<0 || index>=this.size()}
+     * {@code index < 0 || index >= this.size()}
      */
-    public double enumValue(int index) {
+    public float enumValue(int index) {
         checkSize(index);
         return value[this.index[index]];
     }
 
     /**
-     * Returns the specified node pair value.
+     * Returns the value of the specified node pair.
      *
-     * @param node1 the first node.
-     * @param node2 the second node.
-     * @return the specified node pair value.
+     * @param node1 the first node
+     * @param node2 the second node
+     * @return the value of the specified node pair
+     * @throws IllegalArgumentException if {@code node1 < 0 || node2 < 0}
      */
-    public double value(int node1, int node2) {
+    public float value(int node1, int node2) {
+        if (node1 < 0) {
+            throw new IllegalArgumentException(String.valueOf(node1));
+        }
+        if (node2 < 0) {
+            throw new IllegalArgumentException(String.valueOf(node2));
+        }
         return value[index(node1, node2)];
     }
 
     /**
-     * Sets the value of each node pair to 0.0.
+     * Sets the value of each ordered node pair to 0.
      */
     public void clear() {
         for (int j=0; j<this.size; ++j) {
-            value[index[j]] = 0.0;
+            value[index[j]] = 0f;
         }
         size = 0;
     }
@@ -275,7 +271,7 @@ public class SingleNodes {
      * Returns a string representation of {@code this}.  The exact
      * details of the representation are unspecified and subject to change.
      *
-     * @return a string representation of {@code this}.
+     * @return a string representation of {@code this}
      */
     @Override
     public String toString() {
@@ -286,9 +282,9 @@ public class SingleNodes {
             sb.append(" (");
             sb.append(j);
             sb.append(": node1=");
-            sb.append((int) enumNode1(j));
+            sb.append(enumNode1(j));
             sb.append(" node2=");
-            sb.append((int) enumNode2(j));
+            sb.append(enumNode2(j));
             sb.append(" value=");
             sb.append(enumValue(j));
             sb.append(") ");

@@ -20,6 +20,7 @@ package ibd;
 
 import blbutil.IndexMap;
 import blbutil.IntList;
+import blbutil.IntPair;
 import haplotype.HapPairs;
 import haplotype.SampleHapPairs;
 import java.util.ArrayList;
@@ -27,12 +28,14 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.IntStream;
 
 /**
  * <p>Class {@code IbsHapSegments} identifies IBS haplotype segments in
  * a list of sample halotype pairs.
  * </p>
- * Instances of {@code IbsHapSegments} are immutable.
+ * <p>Instances of {@code IbsHapSegments} are immutable.
+ * </p>
  *
  * Reference: Gusev A, Lowe JK, Stoffel M, Daly MJ, Altshuler D, Breslow JL,
  *            Friedman JM, Pe'er I (2008) Whole population, genomewide mapping
@@ -53,20 +56,22 @@ public final class IbsHapSegments {
     private final int DEL = -67;
 
     /**
-     * Constructs a new {@code IbsHapSegments} object.
-     * @param haps the sample haplotype pairs.
-     * @param pos an array of non-decreasing marker positions:
-     * {@code pos[j]} is the position of marker {@code haps.marker(j)}.
-     * @param minLength the minimum length of a reported IBS segment.
+     * Constructs a new {@code IbsHapSegments} object from the specified data.
+     * @param haps the sample haplotype pairs
+     * @param pos an array of non-decreasing marker positions whose {@code j}-th
+     * element is the position of marker {@code haps.marker(j)}
+     * @param minLength the minimum length of a reported IBS segment
      *
-     * @throws IllegalArgumentException if {@code haps.nMarkers()!=pos.length}.
-     * @throws IllegalArgumentException if {@code pos[0]<0}, or if
-     * {@code pos[j]<pos[j-1]} for any {@code  0<j<pos.length}.
      * @throws IllegalArgumentException if
-     * {@code (Double.isNaN(pos[j])==true || Double.isInfinite(pos[j])==true)}
-     * for any {@code  0<=j<pos.length}.
-     * @throws IllegalArgumentException if {@code  minLength<=0.0f}.
-     * @throws NullPointerException if {@code haps==null || pos==null}.
+     * {@code haps.nMarkers() != pos.length}
+     * @throws IllegalArgumentException if {@code pos[0] < 0}, or if
+     * {@code pos[j] < pos[j-1]} for any {@code j} satisfing
+     * {@code (0 < j && j < pos.length)}
+     * @throws IllegalArgumentException if
+     * {@code (Double.isNaN(pos[j])==true || Double.isInfinite(pos[j]) == true)}
+     * for any {@code j} satisfying {@code  (0 <= j && j < pos.length)}
+     * @throws IllegalArgumentException if {@code  minLength <= 0.0f}
+     * @throws NullPointerException if {@code haps == null || pos == null}
      */
     public IbsHapSegments(SampleHapPairs haps, double[] pos, double minLength) {
         checkArguments(haps, pos, minLength);
@@ -80,10 +85,10 @@ public final class IbsHapSegments {
     /**
      * Constructs a new {@code IbsHapSegments} object with marker positions
      * defined to be marker indices.
-     * @param haps the sample haplotype pairs.
+     * @param haps the sample haplotype pairs
      * @param minMarkers the minimum number of shared markers in a reported
-     * IBS segment.
-     * @throws NullPointerException if {@code haps==null}.
+     * IBS segment
+     * @throws NullPointerException if {@code haps == null}
      */
     public IbsHapSegments(SampleHapPairs haps, int minMarkers) {
         this(haps, pos(haps.nMarkers()), minMarkers);
@@ -122,19 +127,12 @@ public final class IbsHapSegments {
     private static int[] windowStarts(double[] pos, double minIbsLength) {
         double step = minIbsLength/2.0f;
         IntList indices = new IntList(pos.length/10);
-        double endThreshold = pos[pos.length-1] - 2.0*step;
-        int prevIndex = 0;
-        indices.add(prevIndex);
-        while (pos[prevIndex] < endThreshold) {
-            double nextPos = pos[prevIndex] + step;
-            int nextIndex = nextIndex(pos, prevIndex, nextPos);
-            indices.add(nextIndex);
-            prevIndex = nextIndex;
-
-        }
-        double nextPos = (pos[prevIndex] + pos[pos.length-1]) / 2.0;
-        int nextIndex = nextIndex(pos, prevIndex, nextPos);
-        indices.add(nextIndex);
+        int index = 0;
+        do {
+            indices.add(index);
+            double nextPos = pos[index] + step;
+            index = nextIndex(pos, index, nextPos);
+        } while (index < pos.length);
         return indices.toArray();
     }
 
@@ -143,62 +141,63 @@ public final class IbsHapSegments {
         return (nextIndex<0) ? -nextIndex-1 : nextIndex;
     }
 
-    private static int[][][] idSets(SampleHapPairs haps, int[] windowStarts) {
-        int[][][] value = new int[windowStarts.length][haps.nHaps()][];
-        for (int j=0; j<value.length; ++j) {
-            int start = windowStarts[j];
-            int end = ( (j+1)<windowStarts.length) ? windowStarts[j+1]
-                    : haps.nMarkers();
-            List<Haplotype> hapList = hapList(haps, start, end);
-            Map<Haplotype, IntList> map = dictionary(hapList);
-            fillIdSet(map, value[j]);
+    private static int[][][] idSets(SampleHapPairs haps, int[] starts) {
+        return IntStream.range(0, starts.length)
+                .parallel()
+                .mapToObj(j -> intPair(j, starts, haps.nMarkers()))
+                .map(ip -> hapDictionary(haps, ip))
+                .map(m -> fillIdSet(m, haps.nHaps()))
+                .toArray(int[][][]::new);
+    }
+
+    private static IntPair intPair(int index, int[] starts, int nMarkers) {
+        if (index+1 < starts.length) {
+            return new IntPair(starts[index], starts[index+1]);
+        }
+        else {
+            return new IntPair(starts[index], nMarkers);
+        }
+    }
+
+    private static Map<Haplotype, IntList> hapDictionary(SampleHapPairs haps,
+            IntPair ip) {
+        Map<Haplotype, IntList> map = new HashMap<>();
+        IntStream.range(0, haps.nHaps())  // forEach does not allow parallelization
+                .mapToObj(h -> new Haplotype(haps, h, ip.first(), ip.second()))
+                .forEach((h) -> {
+                    IntList list = map.get(h);
+                    if (list==null) {
+                        list = new IntList(10);
+                        map.put(h, list);
+                    }
+                    list.add(h.hapIndex());
+                });
+        return map;
+    }
+
+    private static int[][] fillIdSet(Map<Haplotype, IntList> hapMap, int nHaps) {
+        int[][] value = new int[nHaps][];
+        for (Haplotype key : hapMap.keySet()) {
+            int[] ia = hapMap.get(key).toArray();
+            for (int i : ia) {
+                value[i] = ia;
+            }
         }
         return value;
     }
 
-    private static List<Haplotype> hapList(SampleHapPairs haps, int start,
-            int end) {
-        List<Haplotype> hapList = new ArrayList<>(haps.nHaps());
-        for (int j=0, n=haps.nHaps(); j<n; ++j) {
-            hapList.add(new Haplotype(haps, j, start, end));
-        }
-        return hapList;
-    }
-
-    private static Map<Haplotype, IntList> dictionary(List<Haplotype> hapList) {
-        Map<Haplotype, IntList> map = new HashMap<>();
-        for (Haplotype h : hapList) {
-            IntList list = map.get(h);
-            if (list==null) {
-                list = new IntList(10);
-                map.put(h, list);
-            }
-            list.add(h.hapIndex());
-        }
-        return map;
-    }
-
-    private static void fillIdSet(Map<Haplotype, IntList> hapMap, int[][] idSet) {
-        for (Haplotype key : hapMap.keySet()) {
-            int[] ia = hapMap.get(key).toArray();
-            for (int i : ia) {
-                idSet[i] = ia;
-            }
-        }
-    }
-
     /**
      * Returns the sample haplotype pairs.
-     * @return the sample haplotype pairs.
+     * @return the sample haplotype pairs
      */
     public SampleHapPairs haps() {
         return haps;
     }
 
     /**
-     * Returns an array of marker positions: {@code this.pos()[j]} is the
-     * position of marker {@code this.haps().marker(j)}.
-     * @return an array of marker positions.
+     * Returns an array of non-decreasing marker positions whose {@code j}-th
+     * element is the position of marker {@code this.haps().marker(j)}.
+     * @return an array of marker positions
      */
     public double[] pos() {
         return pos.clone();
@@ -206,27 +205,28 @@ public final class IbsHapSegments {
 
     /**
      * Returns the minimum length of an IBS segment.
-     * @return the minimum length of an IBS segment.
+     * @return the minimum length of an IBS segment
      */
     public double minIbsLength() {
         return minLength;
     }
 
     /**
-     * Returns the list of chromosome segments for other haplotypes that
-     * are IBS with the specified haplotype and) have length
-     * {@code >=this.minIbsLength()}.
+     * Returns the list of haplotype segments for other haplotypes that
+     * are IBS with the specified haplotype and have length greater
+     * than or equal to {@code this.minIbsLength()}.
      *
-     * @param hap the haplotype index.
-     * @return a list of IBS haplotype segments.
+     * @param hap the haplotype index
+     * @return a list of IBS haplotype segments
      *
      * @throws IndexOutOfBoundsException if
-     * {@code hap<0 || hap>=this.haps().nHaps()}
+     * {@code hap < 0 || hap >= this.haps().nHaps()}
      */
     public List<HapSegment> find(int hap) {
         List<HapSegment> segments = new ArrayList<>(INIT_LIST_SIZE);
-        IndexMap prev = new IndexMap(haps.nHaps()-1);
-        IndexMap next = new IndexMap(haps.nHaps()-1);
+        int nil = Integer.MIN_VALUE;
+        IndexMap prev = new IndexMap(haps.nHaps()-1, nil);
+        IndexMap next = new IndexMap(haps.nHaps()-1, nil);
         int window = 0;
         matches(idSets, hap, window, prev);
         while (++window < idSets.length) {
@@ -243,22 +243,24 @@ public final class IbsHapSegments {
     }
 
     /**
-     * Returns the list of chromosome segments for other haplotypes that
-     * i) are IBS with the specified haplotype, ii) have length
-     * {@code >=this.minIbsLength()}, and iii) that have a chromosome interval
-     * that is not a proper subset of the chromosome interval for any other
-     * haplotype segment satisfying the preceding two conditions.
+     * Returns a list of haplotype segments for other haplotypes
+     * that are IBS with the specified haplotype and that have length greater
+     * than or equal to {@code this.minIbsLength()}. An IBS segment is
+     * permitted (but not required) to be excluded from the returned
+     * list if both end-points of the IBD segment are interior points of
+     * another IBD segment.
      *
-     * @param hap the haplotype index.
-     * @return a list of IBS haplotype segments.
+     * @param hap the haplotype index
+     * @return a list of IBS haplotype segments
      *
      * @throws IndexOutOfBoundsException if
-     * {@code hap<0 || hap>=this.haps().nHaps()}
+     * {@code hap < 0 || hap >= this.haps().nHaps()}
      */
     public List<HapSegment> filteredFind(int hap) {
         List<HapSegment> segments = new ArrayList<>(INIT_LIST_SIZE);
-        IndexMap prev = new IndexMap(haps.nHaps()-1);
-        IndexMap next = new IndexMap(haps.nHaps()-1);
+        int nil = Integer.MIN_VALUE;
+        IndexMap prev = new IndexMap(haps.nHaps()-1, nil);
+        IndexMap next = new IndexMap(haps.nHaps()-1, nil);
         int window = 0;
         matches(idSets, hap, window, prev);
         while (++window < idSets.length) {
@@ -290,7 +292,7 @@ public final class IbsHapSegments {
         int nil = next.nil();
         int minStart = Integer.MAX_VALUE;
         for (int i=0, n=next.size(); i<n; ++i) {
-            int hap = next.enumKey(i);
+            int hap = next.enumeratedKey(i);
             int prevStart = prev.get(hap);
             if (prevStart != nil) {
                 next.put(hap, prevStart);
@@ -306,8 +308,8 @@ public final class IbsHapSegments {
     private void save(HapPairs haps, int hap1,
             IndexMap prev, int prevExclEnd, List<HapSegment> segments) {
         for (int i=0, n=prev.size(); i<n; ++i) {
-            int hap2 = prev.enumKey(i);
-            int startWindow = prev.enumValue(i);
+            int hap2 = prev.enumeratedKey(i);
+            int startWindow = prev.enumeratedValue(i);
             if (startWindow != DEL) {
                 int start = start(haps, hap1, hap2, windowStarts[startWindow]);
                 int inclEnd = inclusiveEnd(haps, hap1, hap2, prevExclEnd);
@@ -321,8 +323,8 @@ public final class IbsHapSegments {
     private void filteredSave(HapPairs haps, int hap1, IndexMap prev,
             int minExtendedStartWindow, int prevExclEnd, List<HapSegment> segments) {
         for (int i=0, n=prev.size(); i<n; ++i) {
-            int hap2 = prev.enumKey(i);
-            int startWindow = prev.enumValue(i);
+            int hap2 = prev.enumeratedKey(i);
+            int startWindow = prev.enumeratedValue(i);
             if (startWindow != DEL && startWindow <= minExtendedStartWindow) {
                 int start = start(haps, hap1, hap2, windowStarts[startWindow]);
                 int inclEnd = inclusiveEnd(haps, hap1, hap2, prevExclEnd);

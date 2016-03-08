@@ -18,25 +18,23 @@
  */
 package vcf;
 
-import blbutil.SampleFileIterator;
-import beagleutil.ChromInterval;
+import beagleutil.SampleIds;
 import beagleutil.Samples;
-import blbutil.Filter;
-import blbutil.FilterUtils;
+import blbutil.SampleFileIt;
 import haplotype.HapPair;
 import haplotype.RefHapPairs;
 import haplotype.SampleHapPairs;
 import haplotype.WrappedHapPair;
-import java.io.File;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 
 /**
- * Class {@code Data} represents a sliding marker window for
- * reference and non-reference samples.
+ * <p>Class {@code AllData} represents a sliding window of
+ * reference and target VCF records.
+ * </p>
+ * <p>Instances of class {@code AllData} are not thread-safe.
+ * </p>
  *
  * @author Brian L. Browning {@code <browning@uw.edu>}
  */
@@ -44,47 +42,76 @@ public class AllData implements Data {
 
     private int window = 0;
     private VcfEmission[] refData;
+    private SampleHapPairs refSampleHapPairs;
     private GL refEmissions;
     private VcfEmission[] targetData;  // missing markers as null entries
     private int[] refIndices;
     private int[] targetIndices;
     private GL targetEmissions;
+    private final Samples allSamples;
 
-    private final List<HapPair> refHaps;
-    private final List<HapPair> targetRefHaps; // at target markers
+    private final List<HapPair> refHapPairs;
+    private final List<HapPair> targetRefHapPairs; // at target markers
     private final VcfWindow refWindow;
-    private final VcfWindow targetWindow;
+    private final RestrictedVcfWindow targetWindow;
 
-    private AllData(VcfWindow refWindow, VcfWindow targetWindow) {
-        checkSampleOverlap(refWindow.samples(), targetWindow.samples());
-        this.refWindow = refWindow;
-        this.targetWindow = targetWindow;
+    /**
+     * Constructs and returns a new {@code AllData} instance from VCF records
+     * returned by the specified {@code SampleFileIt} objects.
+     *
+     * @param refIt an iterator that returns reference VCF records
+     * @param targetIt an iterator that returns target VCF records
+     * @return a new {@code AllData} instance.
+     *
+     * @throws IllegalArgumentException if either the reference data or
+     * target data contain no samples
+     * @throws IllegalArgumentException if a format error is detected
+     * in a string VCF record
+     * @throws NullPointerException if {@code refIt == null || targetIt == null}
+     */
+    public static AllData allData(SampleFileIt<VcfEmission> refIt,
+            SampleFileIt<? extends VcfEmission> targetIt) {
+        if (refIt.samples().nSamples()==0 && targetIt.samples().nSamples()==0) {
+            throw new IllegalArgumentException("nSamples==0");
+        }
+        VcfWindow refWindow = new VcfWindow(refIt);
+        RestrictedVcfWindow targetWindow = new RestrictedVcfWindow(targetIt);
+        return new AllData(refWindow, targetWindow);
+    }
+
+    private AllData(VcfWindow refWind, RestrictedVcfWindow targetWind) {
+        checkSampleOverlap(refWind.samples(), targetWind.samples());
+        this.refWindow = refWind;
+        this.targetWindow = targetWind;
 
         this.refData = new VcfEmission[0];
-        this.refEmissions = new RefGL(refWindow.samples(), refData);
+        this.refSampleHapPairs = null;
+        this.refEmissions = new RefGL(refWind.samples(), refData);
         this.targetData = new VcfEmission[0];
         this.refIndices = new int[0];
         this.targetIndices = new int[0];
-        this.targetEmissions = new BasicGL(targetWindow.samples(), targetData);
+        this.targetEmissions = new BasicGL(targetWind.samples(), targetData);
+        this.allSamples = allSamples(refWind.samples(), targetWind.samples());
 
-        this.refHaps = new ArrayList<>(0);
-        this.targetRefHaps = new ArrayList<>(0);
+        this.refHapPairs = new ArrayList<>(0);
+        this.targetRefHapPairs = new ArrayList<>(0);
     }
 
-    private static Filter<Marker> restrictToVcfMarkers(File vcfFile,
-            Filter<Marker> markerFilter, ChromInterval chromInterval) {
-        Set<Marker> includedMarkers = new HashSet<>(50000);
-        SampleFileIterator<VcfRecord> it = new VcfIterator(vcfFile);
-        if (chromInterval != null) {
-            it = new IntervalVcfIterator(it, chromInterval);
+    private static Samples allSamples(Samples ref, Samples target) {
+        /*
+           Target samples are listed first so that sample indices agree
+           with sample indices in target data genotype likelihoods.
+        */
+        int nRef = ref.nSamples();
+        int nTarget = target.nSamples();
+        int[] idIndices = new int[nRef + nTarget];
+        for (int j=0; j<nTarget; ++j) {
+            idIndices[j] = target.idIndex(j);
         }
-        if (markerFilter != null) {
-            it = new FilteredVcfIterator(it, markerFilter);
+        for (int j=0; j<nRef; ++j) {
+            idIndices[nTarget + j] = ref.idIndex(j);
         }
-        while (it.hasNext()) {
-            includedMarkers.add(it.next().marker());
-        }
-        return FilterUtils.includeFilter(includedMarkers);
+        return new Samples(idIndices);
     }
 
     private static void checkSampleOverlap(Samples ref, Samples nonRef) {
@@ -102,215 +129,10 @@ public class AllData implements Data {
         for (int j=1; j<idIndices.length; ++j) {
             if (idIndices[j-1]==idIndices[j]) {
                 String s = "Overlap between reference and non-reference samples: "
-                        + ref.id(idIndices[j-1]);
+                        + SampleIds.instance().id(idIndices[j-1]);
                 throw new IllegalArgumentException(s);
             }
         }
-    }
-
-    /**
-     * Constructs and returns a new {@code Data} instance
-     * from phased genotypes for reference samples and from called genotypes
-     * for non-reference samples.
-     *
-     * @param ref a file in VCF format with phased, non-missing genotypes.
-     * The VCF records for each chromosome must be contiguous and sorted
-     * in order of increasing position.
-     * @param nonRef a file in VCF format with GT format field data.
-     * The VCF records for each chromosome must be contiguous and sorted
-     * in order of increasing position.
-     * @param sampleFilter a sample filter, or {@code null} if there
-     * is no sample filter.
-     * @param markerFilter a marker filter, or {@code null} if there
-     * is no marker filter.
-     * @param chromInterval the the chromosome interval to read, or
-     * {@code null} if there is no interval restriction.
-     * @param usePhase {@code true} if phase information in the specified
-     * VCF file should be used, and {@code false} otherwise.
-     * @param impute {@code true} if markers in the reference file
-     * that are missing from the non-reference file should be imputed, and
-     * {@code false} otherwise.
-     * @return a new {@code Data} instance.
-     * @throws IllegalArgumentException if any VCF file is incorrectly
-     * formatted.
-     * @param pedFile a linkage-format pedigree file, or {@code null}
-     * if no pedigree relationships are known.  A pedigree file must have
-     * at least 4 white-space delimited columns.  The first column of the
-     * pedigree file (family ID) is ignored.  The second, third, and fourth
-     * columns are the individual ID, father's ID, and mother's ID respectively.
-     *
-     * @throws IllegalArgumentException if either VCF file contains no samples.
-     * @throws IllegalArgumentException if any VCF header line
-     * does not conform to the VCF specification, or if the first
-     * VCF record does not conform to the VCF specification.
-     * @throws IllegalArgumentException if the specified
-     * {@code pedFile} is not {@code null} and contains
-     * a non-blank line having less than 4 white-space delimited fields
-     * or contains duplicate individual identifiers in the second column.
-     * @throws NullPointerException if {@code ref==null || nonRef==null}.
-     */
-    public static Data gt(File ref, File nonRef, Filter<String> sampleFilter,
-            Filter<Marker> markerFilter, ChromInterval chromInterval,
-            File pedFile, boolean usePhase, boolean impute) {
-        if (impute==false) {
-            markerFilter = restrictToVcfMarkers(nonRef, markerFilter,
-                    chromInterval);
-        }
-        SampleFileIterator<VcfRecord> filtRefIt = VcfIterator.filteredIterator(
-                ref, sampleFilter, markerFilter, chromInterval);
-        SampleFileIterator<VcfEmission> refIt = new VcfRefIterator(filtRefIt);
-        VcfWindow refWindow = new VcfWindow(refIt);
-
-        SampleFileIterator<VcfRecord> filtNonRefIt =
-                VcfIterator.filteredIterator(nonRef, sampleFilter, markerFilter,
-                chromInterval);
-        SampleFileIterator<VcfEmission> targetIt = VcfEmissionIterator.gt(
-                filtNonRefIt, pedFile, usePhase);
-        VcfWindow targetWindow = new VcfWindow(targetIt);
-
-        return new AllData(refWindow, targetWindow);
-    }
-
-    /**
-     * Constructs and returns a new {@code Data} instance from
-     * phased genotypes for reference samples and from genotype likelihoods
-     * for non-reference samples.
-     *
-     * @param ref a file in VCF format with phased, non-missing genotypes.
-     * The VCF records for each chromosome must be contiguous and sorted
-     * in order of increasing position.
-     * @param nonRef a file in VCF format with GL or PL format field data.
-     * The VCF records for each chromosome must be contiguous and sorted
-     * in order of increasing position.  If a record has both GL and PL
-     * format codes, the PL format field data will be ignored.
-     * @param sampleFilter a sample filter, or {@code null} if there
-     * is no sample filter.
-     * @param markerFilter a marker filter, or {@code null} if there
-     * is no marker filter.
-     * @param chromInterval the the chromosome interval to read, or
-     * {@code null} if there is no interval restriction.
-     * @param pedFile a linkage-format pedigree file, or {@code null}
-     * if no pedigree relationships are known.  A pedigree file must have
-     * at least 4 white-space delimited columns.  The first column of the
-     * pedigree file (family ID) is ignored.  The second, third, and fourth
-     * columns are the individual ID, father's ID, and mother's ID respectively.
-     * @param maxLR maximum likelihood ratio.  If the likelihood ratio between
-     * two possible genotypes is larger than {@code maxLR}, then the
-     * smaller likelihood is set to 0.0, unless the change would create a
-     * Mendelian inconsistency in a parent-offspring trio or duo.  In such
-     * a case the unmodified likelihoods are used for all members of the
-     * inconsistent duo or trio.
-     * @param impute {@code true} if markers in the reference file
-     * that are missing from the non-reference file should be imputed, and
-     * {@code false} otherwise.
-     * @return a new {@code Data} instance.
-     *
-     * @throws IllegalArgumentException if either VCF file contains no samples.
-     * @throws IllegalArgumentException if any VCF header line
-     * does not conform to the VCF specification, or if the first
-     * VCF record does not conform to the VCF specification.
-     * @throws IllegalArgumentException if the specified
-     * {@code pedFile} is not {@code null} and contains
-     * a non-blank line having less than 4 white-space delimited fields
-     * or contains duplicate individual identifiers in the second column.
-     * @throws IllegalArgumentException if
-     * {@code Float.isNaN(maxLR) || maxLR<=1.0f}.
-     * @throws NullPointerException if {@code ref==null || nonRef==null}.
-     */
-    public static Data gl(File ref, File nonRef, Filter<String> sampleFilter,
-            Filter<Marker> markerFilter, ChromInterval chromInterval,
-            File pedFile, float maxLR, boolean impute) {
-        if (impute==false) {
-            markerFilter = restrictToVcfMarkers(nonRef, markerFilter,
-                    chromInterval);
-        }
-        SampleFileIterator<VcfRecord> filtRefIt = VcfIterator.filteredIterator(
-                ref, sampleFilter, markerFilter, chromInterval);
-        SampleFileIterator<VcfEmission> refIt = new VcfRefIterator(filtRefIt);
-        VcfWindow refWindow = new VcfWindow(refIt);
-
-        SampleFileIterator<VcfRecord> filtNonRefIt =
-                VcfIterator.filteredIterator(nonRef, sampleFilter, markerFilter,
-                chromInterval);
-        SampleFileIterator<VcfEmission> targetIt = VcfEmissionIterator.gl(
-                filtNonRefIt, pedFile, maxLR);
-        VcfWindow targetWindow = new VcfWindow(targetIt);
-
-        return new AllData(refWindow, targetWindow);
-    }
-
-    /**
-     * Constructs and returns a new {@code Data} instance from
-     * phased genotypes for reference samples and from genotype likelihoods
-     * or called genotypes for non-reference samples.
-     * @param ref a file in VCF format with phased, non-missing genotypes.
-     * The VCF records for each chromosome must be contiguous and sorted
-     * in order of increasing position.
-     * @param nonRef a file in VCF format with GL, PL, or GT format field data.
-     * The VCF records for each chromosome must be contiguous and sorted
-     * in order of increasing position.  If a record has a GL or PL format
-     * code, GT format field data will be ignored.  If a record has both
-     * GL and PL format codes, the PL format field data will be ignored.
-     * @param sampleFilter a sample filter, or {@code null} if there
-     * is no sample filter.
-     * @param markerFilter a marker filter, or {@code null} if there
-     * is no marker filter.
-     * @param chromInterval the the chromosome interval to read, or
-     * {@code null} if there is no interval restriction.
-     * @param pedFile a linkage-format pedigree file, or {@code null}
-     * if no pedigree relationships are known.  A pedigree file must have
-     * at least 4 white-space delimited columns.  The first column of the
-     * pedigree file (family ID) is ignored.  The second, third, and fourth
-     * columns are the individual ID, father's ID, and mother's ID respectively.
-     * @param usePhase {@code true} if phase information in the specified
-     * VCF record will be used when a sample's genotype emission probabilities
-     * are determined by a called genotype, and {@code false} if
-     * phase information in the specified VCF file record will be ignored.
-     * @param maxLR maximum likelihood ratio.  If the likelihood ratio between
-     * two possible genotypes is larger than {@code maxLR}, then the
-     * smaller likelihood is set to 0.0, unless the change would create a
-     * Mendelian inconsistency in a parent-offspring trio or duo.  In such
-     * a case the unmodified likelihoods are used for all members of the
-     * inconsistent duo or trio.
-     * @param impute {@code true} if markers in the reference file
-     * that are missing from the non-reference file should be imputed, and
-     * {@code false} otherwise.
-     * @return a new {@code Data} instance from
-     * phased genotypes for reference samples and from genotype likelihoods
-     * or called genotypes for non-reference samples.
-     *
-     * @throws IllegalArgumentException if either VCF file contains no samples.
-     * @throws IllegalArgumentException if any VCF header line
-     * does not conform to the VCF specification, or if the first
-     * VCF record does not conform to the VCF specification.
-     * @throws IllegalArgumentException if the specified
-     * {@code pedFile} is not {@code null} and contains
-     * a non-blank line having less than 4 white-space delimited fields
-     * or contains duplicate individual identifiers in the second column.
-     * @throws IllegalArgumentException if
-     * {@code Float.isNaN(maxLR) || maxLR<=1.0f}.
-     * @throws NullPointerException if {@code ref==null || nonRef==null}.
-     */
-    public static Data gtgl(File ref, File nonRef, Filter<String> sampleFilter,
-            Filter<Marker> markerFilter, ChromInterval chromInterval,
-            File pedFile, boolean usePhase, float maxLR, boolean impute) {
-        if (impute==false) {
-            markerFilter = restrictToVcfMarkers(nonRef, markerFilter, chromInterval);
-        }
-        boolean preferGL = false;
-        SampleFileIterator<VcfRecord> filtRefIt = VcfIterator.filteredIterator(
-                ref, sampleFilter, markerFilter, chromInterval);
-        SampleFileIterator<VcfEmission> refIt = new VcfRefIterator(filtRefIt);
-        VcfWindow refWindow = new VcfWindow(refIt);
-
-        SampleFileIterator<VcfRecord> filtNonRefIt =
-                VcfIterator.filteredIterator(nonRef, sampleFilter, markerFilter,
-                chromInterval);
-        SampleFileIterator<VcfEmission> targetIt = VcfEmissionIterator.gtgl(
-                filtNonRefIt, pedFile, usePhase, maxLR, preferGL);
-        VcfWindow targetWindow = new VcfWindow(targetIt);
-
-        return new AllData(refWindow, targetWindow);
     }
 
     @Override
@@ -325,8 +147,10 @@ public class AllData implements Data {
 
     @Override
     public void advanceWindow(int requestedOverlap, int windowSize) {
+        Samples refSamples = refWindow.samples();
         refData = refWindow.advanceWindow(requestedOverlap, windowSize);
-        refEmissions = new RefGL(refWindow.samples(), refData);
+        refEmissions = new RefGL(refSamples, refData);
+        refSampleHapPairs = new RefHapPairs(refEmissions.markers(), refSamples, refData);
         targetData = targetWindow.advanceWindow(refEmissions.markers());
         refIndices = refIndices(targetData);
         targetIndices = targetIndices(targetData);
@@ -386,18 +210,18 @@ public class AllData implements Data {
     }
 
     private void setRefHaplotypes(Markers refMarkers, VcfEmission[] refData) {
-        refHaps.clear();
+        refHapPairs.clear();
         SampleHapPairs refHaplotypes =
                 new RefHapPairs(refMarkers, refWindow.samples(), refData);
         for (int j=0, n=refHaplotypes.nSamples(); j<n; ++j) {
-            refHaps.add(new WrappedHapPair(refHaplotypes, j));
+            refHapPairs.add(new WrappedHapPair(refHaplotypes, j));
         }
     }
 
     private void setTargetRefHaplotypes(Markers targetMarkers, VcfEmission[] refData,
             int[] refMarkerIndices) {
         assert targetMarkers.nMarkers()==refMarkerIndices.length;
-        targetRefHaps.clear();
+        targetRefHapPairs.clear();
         VcfEmission[] vma = new VcfEmission[refMarkerIndices.length];
         for (int j=0; j<refMarkerIndices.length; ++j) {
                 vma[j] = refData[refMarkerIndices[j]];
@@ -405,8 +229,44 @@ public class AllData implements Data {
         SampleHapPairs refHaplotypes
                 = new RefHapPairs(targetMarkers, refWindow.samples(), vma);
         for (int j=0, n=refHaplotypes.nSamples(); j<n; ++j) {
-            targetRefHaps.add(new WrappedHapPair(refHaplotypes, j));
+            targetRefHapPairs.add(new WrappedHapPair(refHaplotypes, j));
         }
+    }
+
+    @Override
+    public int targetOverlap() {
+        return targetWindow.overlap();
+    }
+
+    @Override
+    public int overlap() {
+        return refWindow.overlap();
+    }
+
+    @Override
+    public int nTargetMarkers() {
+        return targetEmissions.markers().nMarkers();
+    }
+
+    @Override
+    public int nTargetMarkersSoFar() {
+        return targetWindow.cumMarkerCnt();
+    }
+
+    @Override
+    public Markers targetMarkers() {
+        return targetEmissions.markers();
+    }
+
+
+    @Override
+    public int nMarkers() {
+        return refEmissions.nMarkers();
+    }
+
+    @Override
+    public int nMarkersSoFar() {
+        return refWindow.cumMarkerCnt();
     }
 
     @Override
@@ -415,18 +275,8 @@ public class AllData implements Data {
     }
 
     @Override
-    public Markers nonRefMarkers() {
-        return targetEmissions.markers();
-    }
-
-    @Override
-    public int nMarkers() {
-        return refEmissions.nMarkers();
-    }
-
-    @Override
-    public int nNonRefMarkers() {
-        return targetEmissions.markers().nMarkers();
+    public int targetMarkerIndex(int refIndex) {
+        return targetIndices[refIndex];
     }
 
     @Override
@@ -435,8 +285,13 @@ public class AllData implements Data {
     }
 
     @Override
-    public int nonRefMarkerIndex(int refIndex) {
-        return targetIndices[refIndex];
+    public int nTargetSamples() {
+        return targetEmissions.nSamples();
+    }
+
+    @Override
+    public Samples targetSamples() {
+        return targetEmissions.samples();
     }
 
     @Override
@@ -450,48 +305,34 @@ public class AllData implements Data {
     }
 
     @Override
-    public int nNonRefSamples() {
-        return targetEmissions.nSamples();
+    public int nAllSamples() {
+        return allSamples.nSamples();
     }
 
     @Override
-    public Samples nonRefSamples() {
-        return targetEmissions.samples();
+    public Samples allSamples() {
+        return allSamples;
     }
 
-    @Override
-    public int overlap() {
-        return refWindow.overlap();
-    }
 
     @Override
-    public int nonRefOverlap() {
-        return targetWindow.overlap();
-    }
-
-    @Override
-    public int cumMarkerCnt() {
-        return refWindow.cumMarkerCnt();
-    }
-
-    @Override
-    public GL refEmissions() {
-        return refEmissions;
-    }
-
-    @Override
-    public GL nonRefEmissions() {
+    public GL targetGL() {
        return targetEmissions;
     }
 
     @Override
-    public List<HapPair> restrictedRefHaps() {
-        return new ArrayList<>(targetRefHaps);
+    public List<HapPair> restrictedRefHapPairs() {
+        return new ArrayList<>(targetRefHapPairs);
     }
 
     @Override
-    public List<HapPair> refHaps() {
-        return new ArrayList<>(refHaps);
+    public List<HapPair> refHapPairs() {
+        return new ArrayList<>(refHapPairs);
+    }
+
+    @Override
+    public SampleHapPairs refSampleHapPairs() {
+        return refSampleHapPairs;
     }
 
     @Override
@@ -503,12 +344,12 @@ public class AllData implements Data {
     /**
      * Returns a string representation of {@code this}.  The exact
      * details of the representation are unspecified and subject to change.
-     * @return a string representation of {@code this}.
+     * @return a string representation of {@code this}
      */
     @Override
     public String toString() {
-        StringBuilder sb = new StringBuilder();
-        sb.append("vcf.AllData");
+        StringBuilder sb = new StringBuilder(20);
+        sb.append(this.getClass().toString());
         return sb.toString();
     }
 }

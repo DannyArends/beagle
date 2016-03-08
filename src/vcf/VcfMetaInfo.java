@@ -46,14 +46,14 @@ public final class VcfMetaInfo {
      * Constructs a {@code VcfMetaInfo} instance representing
      * the specified VCF meta-information line.
      *
-     * @param line a VCF meta-information line.
+     * @param line a VCF meta-information line
      *
      * @throws IllegalArgumentException if the specified information line,
-     * after trimming any beginning and ending white-space, does not begin with
-     * {@code VcfMetaInfo.PREFIX}, and does not contain the
-     * {@code VcfMetaInfo.EQUAL_SIGN} character.
+     * after removing any beginning and ending white-space, does not begin with
+     * {@code VcfMetaInfo.PREFIX}, and does not contain non-empty key and
+     * value strings separated by the  {@code VcfMetaInfo.DELIMITER} character
      *
-     * @throws NullPointerException if {@code line==null}.
+     * @throws NullPointerException if {@code line == null}
      */
     public VcfMetaInfo(String line) {
         line = line.trim();
@@ -63,7 +63,7 @@ public final class VcfMetaInfo {
             throw new IllegalArgumentException(s);
         }
         int index = line.indexOf(DELIMITER);
-        if (index == -1) {
+        if (index <=0 || index == line.length() - 1) {
             String s = "VCF meta-information line: missing \""
                     + DELIMITER + "\"";
             throw new IllegalArgumentException(s);
@@ -75,7 +75,7 @@ public final class VcfMetaInfo {
 
     /**
      * Returns the VCF meta-information line key.
-     * @return the VCF meta-information line key.
+     * @return the VCF meta-information line key
      */
     public String key() {
         return key;
@@ -83,7 +83,7 @@ public final class VcfMetaInfo {
 
     /**
      * Returns the VCF meta-information line value.
-     * @return the VCF meta-information line value.
+     * @return the VCF meta-information line value
      */
     public String value() {
         return value;
@@ -92,7 +92,7 @@ public final class VcfMetaInfo {
     /**
      * Returns the VCF meta-information line represented by {@code this}.
      *
-     * @return the VCF meta-information line represented by {@code this}.
+     * @return the VCF meta-information line represented by {@code this}
      */
     @Override
     public String toString() {

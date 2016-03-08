@@ -18,21 +18,18 @@
  */
 package dag;
 
-import blbutil.FileIterator;
-import blbutil.Utilities;
+import blbutil.FileIt;
 import haplotype.HapPairs;
-import haplotype.HapsMarker;
+import vcf.HapsMarker;
 import haplotype.HapsMarkerIterator;
 import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.ListIterator;
-import vcf.Marker;
-import vcf.Markers;
 
 /**
- * <p>Class {@code MergeableDag} constructs a Directed Acyclic Graph (DAG)
- * from sequence data.
+ * <p>Class {@code MergeableDag} contains a static, thread-safe factory
+ * method that constructs a Directed Acyclic Graph (DAG) from sequence data.
  * </p>
  *
  * References:
@@ -52,160 +49,162 @@ public final class MergeableDag {
             new Score(-1, -1, Float.POSITIVE_INFINITY, false);
     private static final float MAX_THRESHOLD_RATIO = 1.4f;
 
-    private final FileIterator<HapsMarker> it;
-    private final float[] weights;
-    private final int minWindow;
-    private final int maxWindow;
     private final float scale;
-
     private final Dag dag;
 
-    /**
-     * Constructs and returns a new {@code Dag} instance.
-     * @param hapPairs the sequence data.
+    private float nUnmergedAtLeaf = 0f;
+
+  /**
+     * Constructs and returns a new {@code Dag} instance from the
+     * specified data.
+     * @param hapPairs the sequence data
      * @param weights an array whose {@code j}-th element is the
-     * weight for the {@code j}-th haplotype.
-     * @param maxWindow maximum window size used when constructing the DAG.
+     * weight for the {@code j}-th haplotype
      * @param scale a parameter that multiplicatively scales the node
-     * similarity threshold.
-     * @return a new {@code Dag} instance.
+     * similarity threshold
+     * @param nInitLevels the number of initial levels to read
+     * @return a new {@code Dag} instance
      *
-     * @throws IllegalArgumentException if {@code hapPairs.nMarkers()==0}
-     * @throws IllegalArgumentException if any element of the
-     * {@code weights} array is non-positive, NaN or infinite
-     * @throws IllegalArgumentException if {@code maxWindow<1}
+     * @throws IllegalArgumentException if {@code hapPairs.nMarkers() == 0}
      * @throws IllegalArgumentException if
-     * {@code Double.isInfinite(scale) || Double.isNaN(scale)
-     *      || scale<=0}
-     * @throws NullPointerException if {@code hapPairs==null || weights==null}
+     * {@code (weights[j] <= 0 || Float.isFinite(weights[j]) == false)}
+     * for any {@code j} satisfying {@code (0 <= j && j < weights.length)}
+     * @throws IllegalArgumentException if
+     * {@code Double.isFinite(scale) == false || scale <= 0}
+     * @throws IllegalArgumentException if {@code nInitLevels < 1}
+     * @throws NullPointerException if
+     * {@code hapPairs == null || weights == null}
      */
-    public static Dag dag(HapPairs hapPairs, float[] weights, int maxWindow,
-            float scale) {
-        try (FileIterator<HapsMarker> tmpIt = new HapsMarkerIterator(hapPairs)) {
-            MergeableDag md = new MergeableDag(tmpIt, hapPairs.markers(),
-                    weights, maxWindow, scale);
-            return md.dag();
-        }
+    public static Dag dag(HapPairs hapPairs, float[] weights, float scale,
+            int nInitLevels) {
+        MergeableDag md = new MergeableDag(hapPairs, weights, scale, nInitLevels);
+        return md.dag();
     }
 
-    /**
-     * Constructs and returns a new {@code Dag} instance.
-     * @param it an iterator that returns per-marker phased genotype data.
+  /**
+     * Constructs a new {@code MergeableDag} instance from the specified data.
+     * @param hapPairs the sequence data
      * @param weights an array whose {@code j}-th element is the
-     * weight for the {@code j}-th haplotype.
-     * @param maxWindow maximum window size used when constructing the DAG.
+     * weight for the {@code j}-th haplotype
      * @param scale a parameter that multiplicatively scales the node
-     * similarity threshold.
-     * @return a new {@code Dag} instance.
+     * similarity threshold
+     * @param nInitLevels the number of initial levels to read
      *
-     * @throws IllegalArgumentException if {@code it.hasNext()==false}
-     * @throws IllegalArgumentException if any element of the
-     * {@code weights} array is non-positive, NaN or infinite
-     * @throws IllegalArgumentException if {@code maxWindow<1}
+     * @throws IllegalArgumentException if {@code hapPairs.nMarkers() == 0}
      * @throws IllegalArgumentException if
-     * {@code Double.isInfinite(scale) || Double.isNaN(scale)
-     *      || scale<=0}
-     * @throws NullPointerException if {@code it==null || weights==null}
-     */
-    public static Dag dag(FileIterator<HapsMarker> it, float[] weights,
-            int maxWindow, float scale) {
-        Markers markers = null;
-        return new MergeableDag(it, markers, weights, maxWindow, scale).dag();
-    }
-
-    /**
-     * Constructs a new {@code MergeableDag} instance.
-     * @param it an iterator that returns per-marker phased genotype data.
-     * @param markers the list of markers that correspond to the
-     * {@code HapsMarker} instances returned by {@code it}, or {@code null}
-     * if the list of markers should be constructed from the
-     * {@code HapsMarker} instances returned by {@code it}.
-     * @param weights an array whose {@code j}-th element is the
-     * weight for the {@code j}-th haplotype.
-     * @param maxWindow maximum window size used when constructing the DAG.
-     * @param scale a parameter that multiplicatively scales the node
-     * similarity threshold.
-     *
-     * @throws IllegalArgumentException if {@code it.hasNext()==false}
-     * @throws IllegalArgumentException if any element of the
-     * {@code weights} array is non-positive, NaN or infinite
-     * @throws IllegalArgumentException if {@code maxWindow<1}
+     * {@code (weights[j] <= 0 || Float.isFinite(weights[j]) == false)}
+     * for any {@code j} satisfying {@code (0 <= j && j < weights.length)}
      * @throws IllegalArgumentException if
-     * {@code Double.isInfinite(scale) || Double.isNaN(scale)
-     *      || scale<=0}
-     * @throws NullPointerException if {@code it==null || weights==null}
+     * {@code Double.isFinite(scale) == false || scale <= 0}
+     * @throws IllegalArgumentException if {@code nInitLevels < 1}
+     * @throws NullPointerException if
+     * {@code hapPairs == null || weights == null}
      */
-    private MergeableDag(FileIterator<HapsMarker> it, Markers markers,
-            float[] weights, int maxWindow, float scale) {
-        checkParameters(it, weights, maxWindow, scale);
-        this.it = it;
-        this.weights = weights.clone();
-        this.minWindow = maxWindow/12 + 1;
-        this.maxWindow = maxWindow;
+    private MergeableDag(HapPairs hapPairs, float[] weights, float scale,
+            int nInitLevels) {
+        checkParameters(hapPairs, weights, scale, nInitLevels);
         this.scale = scale;
+        List<DagLevel> mergedLevels = new ArrayList<>(hapPairs.nMarkers());
+        float maxUnmerged = maxUnmergedAtLeaf(hapPairs, weights);
+        int lastReadDepth = nInitLevels;
+        try (FileIt<HapsMarker> it = new HapsMarkerIterator(hapPairs)) {
+            MergeableDagLevel current = readFirstLevel(it, weights);
+            MergeableDagLevel leaf = readLevels(it, nInitLevels, current);
+            while (current.next() != null) {
+                nUnmergedAtLeaf = 0f;
+                current = current.next();
+                mergeParentNodes(current);
+                MergeableDagLevel previousLevel = current.setPreviousToNull();
+                mergedLevels.add(previousLevel.toDagLevel());
 
-        List<DagLevel> mergedLevels = new ArrayList<>(25000);
-        MergeableDagLevel currentLevel = new MergeableDagLevel(it.next(),
-                weights);
-        readLevels(it, weights, currentLevel, minWindow);
-        while (currentLevel.next() != null) {
-            currentLevel = currentLevel.next();
-            mergeParentNodes(currentLevel);
-            MergeableDagLevel previousLevel = currentLevel.setPreviousToNull();
-            mergedLevels.add(previousLevel.toDagLevel());
+                if (it.hasNext()) {
+                    float ratio = (nUnmergedAtLeaf / maxUnmerged);
+                    int depth = (leaf.index() - current.index());
+                    int readDepth = nextReadDepth(ratio, depth, lastReadDepth);
+                    if (readDepth>=0) {
+                        leaf = readLevels(it, (readDepth - depth), leaf);
+                        lastReadDepth = readDepth;
+                    }
+                }
+            }
+            mergedLevels.add(current.toDagLevel());
+            DagLevel[] levels =  mergedLevels.toArray(new DagLevel[0]);
+            this.dag = new ImmutableDag(hapPairs.markers(), levels);
         }
-        mergedLevels.add(currentLevel.toDagLevel());
-
-        if (markers==null) {
-            markers = markers(mergedLevels);
-        }
-        DagLevel[] levels =  mergedLevels.toArray(new DagLevel[0]);
-        this.dag = new ImmutableDag(markers, levels);
     }
 
-    private static Markers markers(List<DagLevel> list) {
-        Marker[] ma = new Marker[list.size()];
-        for (int j=0; j<ma.length; ++j) {
-            ma[j] = list.get(j).marker();
+    private static void checkParameters(HapPairs hapPairs, float[] weights,
+            float scale, int nInitLevels) {
+        if (nInitLevels < 1) {
+            throw new IllegalArgumentException(String.valueOf(nInitLevels));
         }
-        return new Markers(ma);
-    }
-
-    /**
-     * Returns the constructed DAG.
-     * @return the constructed DAG.
-     */
-    public Dag dag() {
-        return dag;
-    }
-
-    private static void checkParameters(FileIterator<HapsMarker> it,
-            float[] weights, int maxWindow, double scale) {
-        if (it.hasNext()==false) {
-            throw new IllegalArgumentException("it.hasNext()==false");
+        if (hapPairs.nMarkers()==0) {
+            throw new IllegalArgumentException("hapPairs.nMarkers()==0");
         }
-        for (int j=0; j<weights.length; ++j) {
-            float f = weights[j];
-            if (f <= 0.0 || Float.isNaN(f) || Float.isInfinite(f)) {
-                throw new IllegalArgumentException("weights[" + j + "]=" + f);
+        if (weights!=null) {
+            for (int j=0; j<weights.length; ++j) {
+                float f = weights[j];
+                if (f <= 0.0 || Float.isFinite(f) == false) {
+                    throw new IllegalArgumentException(String.valueOf(f));
+                }
             }
         }
-        if (maxWindow<1) {
-            throw new IllegalArgumentException("maxWindow: " + maxWindow);
-        }
-        if (Double.isInfinite(scale) || Double.isNaN(scale) || scale <=0) {
-            throw new IllegalArgumentException("scale: " + scale);
+        if (scale <= 0 || Float.isFinite(scale) == false) {
+            throw new IllegalArgumentException(String.valueOf(scale));
         }
     }
 
-    private static void readLevels(FileIterator<HapsMarker> it, float[] weights,
-            MergeableDagLevel leafLevel, int maxLevelsToRead) {
-        for (int j=0; j<maxLevelsToRead && it.hasNext(); ++j) {
-            MergeableDagLevel newLevel = new MergeableDagLevel(leafLevel,
-                    it.next(), weights);
-            leafLevel.setNextLevel(newLevel);
-            leafLevel = newLevel;
+    private static MergeableDagLevel readFirstLevel(FileIt<HapsMarker> it,
+            float[] weights) {
+        HapsMarker hapsMarker = it.next();
+        if (weights==null) {
+                return new MergeableDagLevel(hapsMarker);
         }
+        else {
+            return new MergeableDagLevel(hapsMarker, weights);
+        }
+    }
+
+    private static float maxUnmergedAtLeaf(HapPairs hapPairs, float[] weights) {
+        float maxPropUnmerged = 0.01f;
+        float sum = (weights==null ? hapPairs.nHaps() : sum(weights));
+        return maxPropUnmerged * sum;
+    }
+
+    private static int nextReadDepth(float unmergedRatio, int depth,
+            int lastDepth) {
+        if (unmergedRatio <= 1) {
+            return -1;
+        }
+        else if (depth < (0.85*lastDepth) ) {
+            return 1 + (int) Math.round(0.95*lastDepth);
+        }
+        else if ( (unmergedRatio>2) && (depth > (0.95*lastDepth)) ) {
+            return (int) Math.ceil((1 + unmergedRatio/20)*lastDepth);
+        }
+        else {
+            return lastDepth;
+        }
+    }
+
+    private static MergeableDagLevel readLevels(FileIt<HapsMarker> it,
+            int nLevelsToRead, MergeableDagLevel leafLevel) {
+        for (int j=0; it.hasNext() && j<nLevelsToRead; ++j) {
+            HapsMarker hapsMarker = it.next();
+            MergeableDagLevel newLeaf =
+                    new MergeableDagLevel(leafLevel, hapsMarker);
+            leafLevel.setNextLevel(newLeaf);
+            leafLevel = newLeaf;
+        }
+        return leafLevel;
+    }
+
+    private static float sum(float[] fa) {
+        float sum = 0f;
+        for (float f : fa) {
+            sum += f;
+        }
+        return sum;
     }
 
     private void mergeParentNodes(MergeableDagLevel level) {
@@ -257,38 +256,55 @@ public final class MergeableDag {
 
     private Score getPairwiseScores(MergeableDagLevel level,
             List<Score> scores) {
-        if (level.next()==null) {
-            readLevels(it, weights, level, minWindow);
-        }
         Score minScore = MAX_SCORE;
-        int[] nodeArray = level.parentNodeArray();
-        boolean[] hasSibling = hasSibling(level, nodeArray);
-        for (int j=0; j<nodeArray.length; ++j) {
-            int nodeA = nodeArray[j];
-            for (int k=j+1; k<nodeArray.length; ++k) {
-                int nodeB = nodeArray[k];
-                if (hasSibling[j] || hasSibling[k]) {
-                    Score s = score(level, nodeA, nodeB);
-                    if (s!=null) {
-                        if (s.score()<minScore.score() && s.isMergeable()) {
-                            minScore = s;
-                        }
-                        scores.add(s);
+        SortedNodes parentNodes = sortedParents(level);
+        int[] parents = parentNodes.sorted;
+        int nParentsWithSibs = parentNodes.nWithSibs;
+        for (int j=0; j<nParentsWithSibs; ++j) {
+            int nodeA = parents[j];
+            for (int k=j+1; k<parents.length; ++k) {
+                int nodeB = parents[k];
+                Score s = score(level, nodeA, nodeB);
+                if (s!=null) {
+                    if (s.score()<minScore.score() && s.isMergeable()) {
+                        minScore = s;
                     }
+                    scores.add(s);
                 }
-
             }
         }
         return minScore;
     }
 
-    private boolean[] hasSibling(MergeableDagLevel level,
-            int[] parentNodeArray) {
-        boolean[] hasSibling = new boolean[parentNodeArray.length];
-        for (int j=0; j<parentNodeArray.length; ++j) {
-            hasSibling[j] = level.hasSibling(parentNodeArray[j]);
+    private static class SortedNodes {
+
+        public int[] sorted;
+        public int nWithSibs;
+
+        public SortedNodes(int[] sorted, int nWithSibs) {
+            this.sorted = sorted;
+            this.nWithSibs = nWithSibs;
         }
-        return hasSibling;
+    }
+
+    private SortedNodes sortedParents(MergeableDagLevel level) {
+        int[] nodeArray = level.parentNodeArray();
+        int index1 = 0;
+        int index2 = nodeArray.length-1;
+        while (index1<index2) {
+            if (level.hasSibling(nodeArray[index1])) {
+                ++index1;
+            }
+            else {
+                int tmp = nodeArray[index1];
+                nodeArray[index1] = nodeArray[index2];
+                nodeArray[index2--] = tmp;
+            }
+        }
+        if (level.hasSibling(nodeArray[index1])) {
+            ++index1;
+        }
+        return new SortedNodes(nodeArray, index1);
     }
 
     private Score score(MergeableDagLevel level, int nodeA, int nodeB) {
@@ -296,8 +312,8 @@ public final class MergeableDag {
         float nodeCntA = level.nodeCount(nodeA);
         float nodeCntB = level.nodeCount(nodeB);
         float threshold = (float) (scale*Math.sqrt((1.0/nodeCntA)+(1.0/nodeCntB)));
-        maxDiff = similar(level.previous(), level, nodeA, nodeB,
-                nodeCntA, nodeCntB, level.markerIndex(),
+        maxDiff = similar(level, nodeA, nodeB,
+                nodeCntA, nodeCntB, level.index(),
                 nodeCntA, nodeCntB, maxDiff, threshold);
         if (maxDiff > MAX_THRESHOLD_RATIO*threshold) {
             return null;
@@ -308,50 +324,24 @@ public final class MergeableDag {
         }
     }
 
-    private MergeableDagLevel nextLevel(MergeableDagLevel prevLevel,
-            int baseMarker, float propA, float propB, float maxDiff,
-            float threshold) {
-        float t1 = 0.7f * threshold;
-        float t2 = 0.5f * threshold;
-        int depth = prevLevel.markerIndex() - baseMarker;
-        if (depth<maxWindow && ( (maxDiff>t1 && Math.min(propA, propB)>t2)
-                                 || depth<minWindow) ) {
-//        float maxProp = Math.max(propA, propB);
-//        float minProp = Math.min(propA, propB);
-//        float estMaxDiff = maxProp - 0.5f*minProp;
-//        int depth = prevLevel.markerIndex() - baseMarker;
-//        if ( (depth<maxWindow && threshold<0.4 && estMaxDiff>1.1*maxDiff
-//                && estMaxDiff>threshold) || depth<minWindow) {
-            MergeableDagLevel newLeaf =
-                    new MergeableDagLevel(prevLevel, it.next(), this.weights);
-            prevLevel.setNextLevel(newLeaf);
-            return newLeaf;
-        }
-        else {
-            return null;
-        }
-    }
-
     /*
      * Returns a similarity-score (lower scores correspond to higher
      * similarity).
      *
      * @param marker marker DAG marker containing the specified nodes
-     * @param nodeA a parent node at the specified DAG marker in tree A.
-     * @param nodeB a parent node at the specified DAG marker in tree B.
-     * @param nodeCntA the count of the parent node in tree A.
-     * @param nodeCntB the count of the parent node in tree B.
+     * @param nodeA a parent node at the specified DAG level in tree A
+     * @param nodeB a parent node at the specified DAG level in tree B
+     * @param nodeCntA the count of the parent node in tree A
+     * @param nodeCntB the count of the parent node in tree B
      * @param baseMarker the marker index at the root of trees A and B
-     * @param nA the node count of the root of tree A.
+     * @param nA the node count of the root of tree A
      * @param nB the node count of the root of tree B
      * @param maxDiff the current maximum difference in proportions in
-     * the counts of corresponding tree branches.
-     * @param threshold the maximum permitted node similarity.
-     *
-     * @return a similarity-score. Lower scores correspond to greater
-     * similarity.
+     * the counts of corresponding tree branches
+     * @param threshold the maximum permitted node similarity
+     * @return a similarity-score
      */
-    private float similar(MergeableDagLevel prevLevel, MergeableDagLevel level,
+    private float similar(MergeableDagLevel level,
             int nodeA, int nodeB, float nodeCntA, float nodeCntB,
             int baseMarker, float nA, float nB, float maxDiff, float threshold) {
         float propA = nodeCntA / nA;
@@ -366,11 +356,11 @@ public final class MergeableDag {
         else if (diff > maxDiff) {
             maxDiff = diff;
         }
-        if (level==null && it.hasNext()) {
-            level = nextLevel(prevLevel, baseMarker, propA, propB, maxDiff,
-                    threshold);
+        if (nodeA == -1 ^ nodeB == -1) {
+            return maxDiff;
         }
-        if (nodeA == -1 || nodeB == -1 || level==null) {
+        else if (level==null) {
+            nUnmergedAtLeaf += (nodeCntA + nodeCntB);
             return maxDiff;
         }
         for (int j=0, n=level.nAlleles(); j<n; ++j) {
@@ -380,7 +370,7 @@ public final class MergeableDag {
             int childB = (edgeB != -1) ? level.childNode(edgeB) : -1;
             nodeCntA = (edgeA != -1) ? level.edgeCount(edgeA) : 0.0f;
             nodeCntB = (edgeB != -1) ? level.edgeCount(edgeB) : 0.0f;
-            float childMaxDiff = similar(level, level.next(), childA, childB,
+            float childMaxDiff = similar(level.next(), childA, childB,
                     nodeCntA, nodeCntB, baseMarker, nA, nB, maxDiff, threshold);
             if (childMaxDiff > maxDiff) {
                 if (childMaxDiff >= threshold) {
@@ -395,10 +385,18 @@ public final class MergeableDag {
     }
 
     /**
+     * Returns the constructed DAG.
+     * @return the constructed DAG
+     */
+    public Dag dag() {
+        return dag;
+    }
+
+    /**
      * Returns a string description of {@code this}.  The
      * exact details of the representation are unspecified and subject
      * to change.
-     * @return a string description of {@code this}.
+     * @return a string description of {@code this}
      */
     @Override
     public String toString() {

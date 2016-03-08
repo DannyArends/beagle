@@ -18,6 +18,7 @@
  */
 package haplotype;
 
+import beagleutil.Samples;
 import vcf.Marker;
 import vcf.Markers;
 
@@ -36,11 +37,11 @@ public final class WrappedHapPair implements HapPair {
      * Creates a {@code WrappedHapPair} instance representing
      * the specified haplotype pair.
      * @param sampleHapPairs the {@code SampleHapPairs} object that
-     * will be "wrapped" by {@code this}.
-     * @param hapPair a haplotype pair index.
+     * will be "wrapped" by {@code this}
+     * @param hapPair a haplotype pair index
      * @throws IllegalArgumentException if
-     * {@code hapPair<0 || hapPair>=haps.nHapPairs()}.
-     * @throws NullPointerException if {@code sampleHapPairs==null}.
+     * {@code hapPair < 0 || hapPair >= sampleHapPairs.nHapPairs()}
+     * @throws NullPointerException if {@code sampleHapPairs == null}
      */
     public WrappedHapPair(SampleHapPairs sampleHapPairs, int hapPair) {
         if (hapPair < 0 || hapPair >= sampleHapPairs.nHapPairs()) {
@@ -51,12 +52,12 @@ public final class WrappedHapPair implements HapPair {
     }
 
     @Override
-    public byte allele1(int marker) {
+    public int allele1(int marker) {
         return haps.allele1(marker, hapPair);
     }
 
     @Override
-    public byte allele2(int marker) {
+    public int allele2(int marker) {
         return haps.allele2(marker, hapPair);
     }
 
@@ -76,7 +77,12 @@ public final class WrappedHapPair implements HapPair {
     }
 
     @Override
-    public int idIndex() {
-        return haps.idIndex(hapPair);
+    public Samples samples() {
+        return haps.samples();
+    }
+
+    @Override
+    public int sampleIndex() {
+        return hapPair;
     }
 }

@@ -18,34 +18,27 @@
  */
 package main;
 
-import beagleutil.Samples;
 import blbutil.Const;
 import blbutil.IntPair;
-import blbutil.Utilities;
 import dag.Dag;
 import dag.MergeableDag;
 import haplotype.BasicHapPairs;
 import haplotype.BasicSampleHapPairs;
-import haplotype.ConsensusPhasing;
+import haplotype.ConsensusPhaser;
+import haplotype.GLSampleHapPairs;
+import haplotype.GenotypeCorrection;
 import haplotype.HapPair;
 import haplotype.HapPairs;
 import haplotype.SampleHapPairs;
-import haplotype.Weights;
 import haplotype.WrappedHapPair;
 import ibd.HaploidIbd;
 import ibd.IbdSegment;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.Random;
-import vcf.AL;
-import vcf.Data;
 import vcf.GL;
-import vcf.HapAL;
-import vcf.ImputationGL;
-import vcf.Markers;
+import vcf.MaskedEndsGL;
 import vcf.NoPhaseGL;
 
 /**
@@ -54,102 +47,155 @@ import vcf.NoPhaseGL;
  *
  * @author Brian L. Browning {@code <browning@uw.edu>}
  */
-class MainHelper {
+public class MainHelper {
 
-    private final Parameters par;
+    private final Par par;
     private final HapPairSampler hapSampler;
-    private final NuclearFamilies fam;
-    private final Weights weights;
+    private final RecombHapPairSampler recombSampler;
+    private final GeneticMap genMap;
     private final RunStats runStats;
 
-    MainHelper(Parameters par,  GeneticMap genMap, NuclearFamilies fam,
-            Weights weights, RunStats runStats, Random random) {
+    /**
+     * Constructs a new {@code MainHelper} instance.
+     * @param par the command line parameters
+     * @param genMap the genetic map
+     * @param runStats the class for collecting and printing run-time statistics
+     * @throws NullPointerException
+     * if {@code (par == null || genMap == null || runStarts == null)}
+     */
+    MainHelper(Par par, GeneticMap genMap, RunStats runStats) {
         if (runStats==null) {
             throw new NullPointerException("runStats==null");
         }
         this.par = par;
         this.hapSampler = new HapPairSampler(par, runStats);
-        this.fam = fam;
-        this.weights = weights;
+        this.recombSampler = new RecombHapPairSampler(par, runStats);
+        this.genMap = genMap;
         this.runStats = runStats;
     }
 
-    SampleHapPairs sample(Data data, GenotypeValues restrictedGV) {
+    /**
+     * Phases the current window of genotype data.
+     * @param cd the current window of data
+     * @param gv the current scaled genotype probabilities for the target
+     * samples or {@code null} if genotype probabilities are not to be estimated
+     * @return the phased genotype data
+     * @throws IllegalArgumentException if
+     * {@code gv != null && gv.markers().equals(cd.targetMarkers() == false)}
+     * @throws IllegalArgumentException if
+     * {@code gv != null && gv.samples().equals(cd.targetSamples() == false)}
+     * @throws NullPointerException if {@code cd == null}
+     */
+    SampleHapPairs phase(CurrentData cd, GenotypeValues gv) {
+        checkParameters(cd, gv);
+        if (cd.targetGL().isRefData()) {
+            return new GLSampleHapPairs(cd.targetGL());
+        }
+
+        List<HapPair> hapPairs = hapSampler.initialHaps(cd);
         if (par.burnin_its()>0) {
             runStats.println(Const.nl + "Starting burn-in iterations");
+            hapPairs = runBurnin1(cd, hapPairs);
         }
-        List<HapPair> sampledHaps = runBurnin1(data);
-
         if (par.phase_its()>0) {
+            boolean estGprobs = (par.gt()==null && par.niterations()==0);
+            hapPairs = runBurnin2(cd, hapPairs, (estGprobs ? gv : null));
+        }
+        if (par.niterations()>0) {
             runStats.println(Const.nl + "Starting phasing iterations");
+            hapPairs = runRecomb(cd, hapPairs, gv);
         }
-        sampledHaps = runBurnin2(data, sampledHaps, restrictedGV);
-
-        return merge(data.nonRefSamples(), sampledHaps);
+        else {
+            hapPairs = ConsensusPhaser.run(hapPairs);
+        }
+        return new BasicSampleHapPairs(cd.targetSamples(), hapPairs);
     }
 
-    private List<HapPair> runBurnin1(Data data) {
-        checkPrephasedTarget(data.nonRefEmissions().isRefData());
-        int startIt = 0;
-        int endIt = par.burnin_its();
-        boolean useRevDag = (startIt % 2)==0;
-        List<HapPair> restrictedRefHaps = data.restrictedRefHaps();
-        GL gl = data.nonRefEmissions();
-        List<HapPair> sampledHaps = hapSampler.initialHaps(fam, gl, gl);
-        for (int iter=startIt; iter<endIt; ++iter) {
-            useRevDag = !useRevDag;
-            sampledHaps.addAll(restrictedRefHaps);
-            sampledHaps = hapSampler.sample(useRevDag, gl, sampledHaps, fam,
-                    weights);
-            runStats.printIterationUpdate(data.window(), iter+1);
+    private void checkParameters(CurrentData cd, GenotypeValues gv) {
+        if (gv!=null && gv.markers().equals(cd.targetMarkers())==false) {
+            throw new IllegalArgumentException(String.valueOf(gv));
         }
-        return sampledHaps;
+        if (gv!=null && gv.samples().equals(cd.targetSamples())==false) {
+            throw new IllegalArgumentException(String.valueOf(gv));
+        }
     }
 
-    private List<HapPair> runBurnin2(Data data, List<HapPair> sampledHaps,
+    private List<HapPair> runBurnin1(CurrentData cd, List<HapPair> hapPairs) {
+        GenotypeValues gv = null;
+        for (int j=0; j<par.burnin_its(); ++j) {
+            boolean useRevDag = (j & 1)==1;
+            hapPairs = hapSampler.sample(cd, hapPairs, useRevDag, gv);
+            runStats.printIterationUpdate(cd.window(), j+1);
+        }
+        return hapPairs;
+    }
+
+    private List<HapPair> runBurnin2(CurrentData cd, List<HapPair> hapPairs,
             GenotypeValues gv) {
-        if (par.phase_its()==0) {
-            return sampledHaps;
+        List<HapPair> cumHapPairs = new ArrayList<>();
+        int start = par.burnin_its();
+        int end = start + par.phase_its();
+        for (int j=start; j<end; ++j) {
+            boolean useRevDag = (j & 1)==1;
+            hapPairs = hapSampler.sample(cd, hapPairs, useRevDag, gv);
+            runStats.printIterationUpdate(cd.window(), j+1);
+            cumHapPairs.addAll(hapPairs);
         }
-        int startIt = par.burnin_its();
-        int endIt = startIt + par.phase_its();
-        boolean useRevDag = (startIt % 2)==0;
-        List<HapPair> allSamples = new ArrayList<>(par.nsamples()*par.phase_its());
-        List<HapPair> restrictedRefHaps = data.restrictedRefHaps();
-        GL gl = data.nonRefEmissions();
-        for (int iter=startIt; iter<endIt; ++iter) {
-            useRevDag = !useRevDag;
-            sampledHaps.addAll(restrictedRefHaps);
-            if (gv==null) {
-                sampledHaps = hapSampler.sample(useRevDag, gl, sampledHaps, fam,
-                        weights);
-            }
-            else {
-                sampledHaps = hapSampler.sample(useRevDag, gl, sampledHaps, gv,
-                        fam, weights);
-            }
-            allSamples.addAll(sampledHaps);
-            runStats.printIterationUpdate(data.window(), iter+1);
-        }
-        return allSamples;
+        return cumHapPairs;
     }
 
-    Map<IntPair, List<IbdSegment>> refinedIbd(List<HapPair> refHaps,
-            GL gl, SampleHapPairs nextHaps, Weights weights) {
-        if (par.ibd()) {
-            long time = System.nanoTime();
-            int nSamples = refHaps.size() + nextHaps.nSamples();
-            float scale = par.adjustedIbdScale(nSamples);
-            float[] wts = weights.get(nextHaps);
-            Dag dag = ibdDag(refHaps, nextHaps, wts, scale, par.buildwindow());
-            HaploidIbd hapIbd = new HaploidIbd(par.ibdtrim(), par.ibdlod());
-            GL ibdGL = new NoPhaseGL(gl);
-            Map<IntPair, List<IbdSegment>> ibdMap;
+    private List<HapPair> runRecomb(CurrentData cd, List<HapPair> hapPairs,
+            GenotypeValues gv) {
+        hapPairs = ConsensusPhaser.run(hapPairs);
+        List<HapPair> cumHapPairs = new ArrayList<>();
+        int start = par.burnin_its() + par.phase_its();
+        int end = start + par.niterations();
+        for (int j=start; j<end; ++j) {
+            boolean useRevDag = (j & 1)==1;
+            hapPairs = recombSampler.sample(cd, hapPairs, useRevDag, gv);
+            runStats.printIterationUpdate(cd.window(), j+1);
+            cumHapPairs.addAll(hapPairs);
+        }
+        hapPairs = ConsensusPhaser.run(cumHapPairs);
+        hapPairs = correctGenotypes(cd, hapPairs);
+        return hapPairs;
+    }
 
-            ibdMap = hapIbd.run(ibdGL, dag, nextHaps, par.nthreads());
-            long millis = (System.nanoTime() - time)/Const.mega;
-            runStats.ibdMillis(millis);
-            runStats.printRefinedIbdUpdate(scale, dag, millis);
+    private List<HapPair> correctGenotypes(CurrentData cd, List<HapPair> hapPairs) {
+        int start = cd.prevTargetSplice();
+        int end = cd.nextTargetSplice();
+        GL modGL = new MaskedEndsGL(cd.targetGL(), start, end);
+//        File outFile = new File(par.out() + ".gterr");
+//        boolean append = cd.window() > 1;
+//        GenotypeCorrection.run(hapPairs, modGL, par.seed(), outFile, append);
+        GenotypeCorrection.run(hapPairs, modGL, par.seed());
+        return hapPairs;
+    }
+
+    /**
+     * Applies the refined IBD algorithm to the specified data.
+     * @param cd the current window of data
+     * @param targetHapPairs the estimated haplotype pairs
+     * @return the detected IBD segments
+     * @throws NullPointerException if
+     * {@code cd == null || targetHapPairs ==  null}
+     */
+    Map<IntPair, List<IbdSegment>> refinedIbd(CurrentData cd,
+            SampleHapPairs targetHapPairs) {
+        if (par.ibd()) {
+            long t0 = System.nanoTime();
+            int nSamples = cd.nRefSamples() + cd.nTargetSamples();
+            float scale = par.adjustedIbdScale(nSamples);
+
+            Dag dag = ibdDag(cd, targetHapPairs, scale);
+            HaploidIbd hapIbd = new HaploidIbd(par.ibdtrim(), par.ibdlod());
+            GL ibdGL = new NoPhaseGL(cd.targetGL());
+
+            Map<IntPair, List<IbdSegment>> ibdMap =
+                    hapIbd.run(ibdGL, dag, targetHapPairs, par.nthreads());
+            long nanos = (System.nanoTime() - t0);
+            runStats.ibdNanos(nanos);
+            runStats.printRefinedIbdUpdate(scale, dag, nanos);
             return ibdMap;
         }
         else {
@@ -157,91 +203,59 @@ class MainHelper {
         }
     }
 
-    private Dag ibdDag(List<HapPair> refHaps, SampleHapPairs targetHaps,
-            float[] weights, float ibdScale, int buildWindow) {
+    private Dag ibdDag(CurrentData cd, SampleHapPairs targetHaps,
+            float scale) {
+        float[] weights = cd.weights().get(targetHaps);
         float[] combWeights;
         HapPairs dagHaps;
-        if (refHaps.isEmpty()) {
+        if (cd.nRefSamples() == 0) {
             dagHaps = targetHaps;
             combWeights = weights;
         }
         else {
-            List<HapPair> hapsList = new ArrayList<>(refHaps);
+            List<HapPair> hapsList = new ArrayList<>(cd.nAllSamples());
+            cd.addRestrictedRefHapPairs(hapsList);
             for (int j=0, n=targetHaps.nSamples(); j<n; ++j) {
                 hapsList.add(new WrappedHapPair(targetHaps, j));
             }
             dagHaps = new BasicHapPairs(hapsList);
-            int nRefHaps = 2*refHaps.size();
+            int nRefHaps = 2*cd.nRefSamples();
             combWeights = new float[dagHaps.nHaps()];
             Arrays.fill(combWeights, 0, nRefHaps, 1.0f);
             System.arraycopy(weights, 0, combWeights, nRefHaps, weights.length);
         }
-        long t0 = System.currentTimeMillis();
-        Dag ibdDag = MergeableDag.dag(dagHaps, combWeights, buildWindow, ibdScale);
-        runStats.buildMillis(System.currentTimeMillis()-t0);
-        runStats.setSingleDagStats(ibdDag);
+        long t0 = System.nanoTime();
+        int nInitLevels = 500;
+        Dag ibdDag = MergeableDag.dag(dagHaps, combWeights, scale, nInitLevels);
+        runStats.buildNanos(System.nanoTime() - t0);
+        runStats.setDagStats(ibdDag);
         return ibdDag;
     }
 
-    SampleHapPairs impute(Data data,  SampleHapPairs mergedHaps,
-            GenotypeValues gv) {
-        Markers markers = data.markers();
-        GL refEmissions = data.refEmissions();
-        if (markers.nMarkers() > mergedHaps.nMarkers() ) {
-            int startIt = par.burnin_its() + par.phase_its();
-            int endIt = startIt + par.impute_its();
-            int size = par.nsamples()*par.impute_its();
-            List<HapPair> allSamples = new ArrayList<>(size);
-            float nonRefWt = Math.min(1.0f, 10.0f/gv.nSamples());
-            NuclearFamilies noFams = new NuclearFamilies(gv.samples(), null); // remove Mendelian constraints
-            GenotypeValues fixedGv = new FixedGenotypeValues(gv, mergedHaps.markers());
-            float err = 0.0f;
-            AL al = new HapAL(gv.markers(), mergedHaps, err);
-            GL gl = new ImputationGL(markers,  mergedHaps);
-            List<HapPair> sampledHaps = hapSampler.initialHaps(noFams, refEmissions, gl);
-
-            runStats.println(Const.nl + "Starting imputation iterations");
-            Weights imputeWeights = new Weights(noFams, nonRefWt);
-            runImpIts(data, sampledHaps, al, startIt, endIt, imputeWeights,
-                    allSamples, fixedGv);
-            mergedHaps = merge(gv.samples(), allSamples);
+    /**
+     * Performs genotype imputation
+     * @param cd the current window of data
+     * @param shp the estimated target haplotype pairs.
+     * @return imputed haplotypes
+     * @throws NullPointerException if {@code cd == null || shp == null}
+     */
+    AlleleProbs LSImpute(CurrentData cd, SampleHapPairs shp) {
+        if (cd.nMarkers()==cd.nTargetMarkers() || par.impute() == false) {
+            return new SampleHapPairAlleleProbs(shp);
         }
-        return mergedHaps;
-    }
-
-    private List<HapPair> runImpIts(Data data, List<HapPair> modelHaps, AL al,
-            int startIt, int endIt, Weights imputeWeights,
-            List<HapPair> allSamples, GenotypeValues gv) {
-        List<HapPair> refHaps = data.refHaps();
-        boolean useRevDag = (startIt % 2)==0;
-        for (int iter=startIt; iter<endIt; ++iter) {
-            useRevDag = !useRevDag;
-            modelHaps.addAll(refHaps);
-            modelHaps = hapSampler.sample(useRevDag, al, modelHaps, gv,
-                    imputeWeights);
-            if (allSamples!=null) {
-                allSamples.addAll(modelHaps);
-            }
-            runStats.printIterationUpdate(data.window(), iter+1);
+        long t0 = System.nanoTime();
+        GeneticMap imputationMap = genMap;
+        if (par.map()==null) {
+            double scaleFactor = 1e-6;
+            imputationMap = new PositionMap(scaleFactor);
         }
-        return modelHaps;
-    }
 
-    static SampleHapPairs merge(Samples samples,
-            List<HapPair> hapPairList) {
-        List<HapPair> mergedList
-                = ConsensusPhasing.consensusHaps(hapPairList);
-        Collections.sort(mergedList, BasicSampleHapPairs.hapsComparator(samples));
-        return new BasicSampleHapPairs(samples, mergedList);
-    }
+        LiAndStephensHapSampler recombHapSampler =
+                new LiAndStephensHapSampler(par, imputationMap);
 
-    private void checkPrephasedTarget(boolean targetIsRef) {
-        if (par.burnin_its()==0 && par.phase_its()==0 && targetIsRef==false) {
-            String s = "ERROR: If \"burnin-its=0 phase-its=0\", all target genotypes  "
-                    + "are required to be" + Const.nl
-                    + "       phased, to have the '|'allele separator,"
-                    + " and to have no missing alleles.";
-            Utilities.exit(Parameters.usage() + s);
-        }
+        BasicAlleleProbs alProbs = recombHapSampler.sample(cd, shp);
+        runStats.imputationNanos(System.nanoTime() - t0);
+        runStats.printImputationUpdate();
+        return alProbs;
     }
 }

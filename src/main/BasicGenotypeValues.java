@@ -25,9 +25,10 @@ import java.util.concurrent.atomic.AtomicReferenceArray;
 
 /**
  * <p>Class {@code BasicGenotypeValues} stores values for each possible
- * genotype for each sample.
+ * genotype for each sample at each marker.
  * </p>
- * Instances of class {@code BasicGenotypeValues} are thread-safe.
+ * <p>Instances of class {@code BasicGenotypeValues} are thread-safe.
+ * </p>
  *
  * @author Brian L. Browning {@code <browning@uw.edu>}
  */
@@ -43,24 +44,24 @@ public final class BasicGenotypeValues implements GenotypeValues {
 
     /**
      * Constructs a new {@code BasicGenotypeValues} instance with initial
-     * value 0 for each genotype.
-     * @param markers a list of markers.
+     * value 0 for each possible genotype for each sample at each marker.
+     * @param markers a list of markers
      * @param samples a list of samples
-     * @throws NullPointerException if {@code markers==null || samples==null}.
+     * @throws NullPointerException if
+     * {@code markers == null || samples == null}
      */
     public BasicGenotypeValues(Markers markers, Samples samples) {
         if (markers==null) {
-            throw new NullPointerException("markers==null");
+            throw new NullPointerException("markers");
         }
         if (samples==null) {
-            throw new NullPointerException("samples==null");
+            throw new NullPointerException("samples");
         }
         this.markers = markers;
         this.samples = samples;
-        this.values =
-                new AtomicReferenceArray<>(samples.nSamples());
+        this.values = new AtomicReferenceArray<>(samples.nSamples());
         for (int j=0, n=samples.nSamples(); j<n; ++j) {
-            this.values.set(j, new SampleGenotypeValues(markers, j));
+            this.values.set(j, new SampleGenotypeValues(markers, samples, j));
         }
     }
 
@@ -102,5 +103,14 @@ public final class BasicGenotypeValues implements GenotypeValues {
     @Override
     public int nMarkers() {
         return markers.nMarkers();
+    }
+
+    @Override
+    public String toString() {
+        StringBuilder sb = new StringBuilder(100);
+        sb.append('[');
+        sb.append(this.getClass().toString());
+        sb.append(']');
+        return sb.toString();
     }
 }

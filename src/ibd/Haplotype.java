@@ -36,14 +36,14 @@ public class Haplotype {
     private final int hapIndex;
 
     /**
-     * Constructs a new {@code Haplotype} instance whose markers are all
-     * markers in the specified {@code SampleHapPairs} object.
+     * Constructs a new {@code Haplotype} instance. The haplotype will
+     * include all markers in the specified {@code SampleHapPairs} parameter.
      *
-     * @param haps sample haplotype pairs.
-     * @param hap a haplotype index.
+     * @param haps sample haplotype pairs
+     * @param hap a haplotype index
      * @throws IndexOutOfBoundsException if
-     * {@code hap<0 || hap>=haps.nHaps()}
-     * @throws NullPointerException if {@code haps==null}
+     * {@code hap < 0 || hap >= haps.nHaps()}
+     * @throws NullPointerException if {@code haps == null}
      */
     public Haplotype(SampleHapPairs haps, int hap) {
         this(haps, hap, 0, haps.nMarkers());
@@ -53,16 +53,16 @@ public class Haplotype {
     /**
      * Constructs a new {@code Haplotype} instance.
      *
-     * @param haps sample haplotype pairs.
-     * @param hap a haplotype index.
+     * @param haps sample haplotype pairs
+     * @param hap a haplotype index
      * @param start the starting marker index for the haplotype segment
-     * (inclusive).
-     * @param end the ending marker index for the haplotype segment (exclusive).
+     * (inclusive)
+     * @param end the ending marker index for the haplotype segment (exclusive)
      * @throws IndexOutOfBoundsException if
-     * {@code hap<0 || hap>=haps.nHaps()}
+     * {@code hap < 0 || hap >= haps.nHaps()}
      * @throws IndexOutOfBoundsException if
-     * {@code start<0 || start>end || end>haps.nMarkers()}
-     * @throws NullPointerException if {@code haps==null}
+     * {@code start < 0 || start > end || end > haps.nMarkers()}
+     * @throws NullPointerException if {@code haps == null}
      */
     public Haplotype(SampleHapPairs haps, int hap, int start, int end) {
         if (start < 0 || start > end || end > haps.nMarkers()) {
@@ -83,11 +83,11 @@ public class Haplotype {
      * Returns a new {@code Haplotype} instance that is
      * obtained by restricting this haplotype to the specified marker interval.
      * @param start the starting marker index for the haplotype segment
-     * (inclusive).
-     * @param end the ending marker index for the haplotype segment (exclusive).
-     * @return the restricted haplotype segment.
+     * (inclusive)
+     * @param end the ending marker index for the haplotype segment (exclusive)
+     * @return the restricted haplotype segment
      * @throws IndexOutOfBoundsException if
-     * {@code start<0 || start>end || end>this.length()}
+     * {@code start < 0 || start > end || end > this.length()}
      */
     public Haplotype restrict(int start, int end) {
         if (start < 0 || start > end || end > this.length()) {
@@ -102,7 +102,7 @@ public class Haplotype {
 
     /**
      * Returns the number of alleles in this haplotype segment.
-     * @return the number of alleles in this haplotype segment.
+     * @return the number of alleles in this haplotype segment
      */
     public int length() {
         return end - start;
@@ -110,19 +110,27 @@ public class Haplotype {
 
     /**
      * Returns the index of the haplotype.
-     * @return the index of the haplotype.
+     * @return the index of the haplotype
      */
     public int hapIndex() {
         return hapIndex;
     }
 
     /**
-     * Returns the specified marker.
-     * @param index a marker index.  The first marker on the haplotype segment
+     * Returns the sample haplotype pairs.
+     * @return the sample haplotype pairs
+     */
+    public SampleHapPairs sampleHapPairs() {
+        return haps;
+    }
+
+    /**
+     * Returns the specified marker. The first marker on the haplotype segment
      * has index 0.
-     * @return the specified marker.
+     * @param index a marker index
+     * @return the specified marker
      * @throws IndexOutOfBoundsException if
-     * {@code index<0 || index>=this.length()}
+     * {@code index < 0 || index >= this.length()}
      */
     public Marker marker(int index) {
         int i = start + index;
@@ -133,14 +141,15 @@ public class Haplotype {
     }
 
     /**
-     * Returns the specified allele on the haplotype.
-     * @param index a marker index.  The first allele on the haplotype segment
-     * has index 0.
-     * @return the specified allele on the haplotype.
+     * Returns the specified allele on the haplotype.  The first allele on
+     * the haplotype segment has index 0.
+     *
+     * @param index a marker index
+     * @return the specified allele on the haplotype
      * @throws IndexOutOfBoundsException if
-     * {@code index<0 || index>=this.length()}
+     * {@code index < 0 || index >= this.length()}
      */
-    public byte allele(int index) {
+    public int allele(int index) {
         int i = start + index;
         if (i < start || i >= end) {
             throw new IndexOutOfBoundsException(String.valueOf(index));
@@ -154,10 +163,9 @@ public class Haplotype {
      * is a {@code  Haplotype} that represents the same haplotype segment
      * as {@code  this}, and returns {@code  false} otherwise.
      * @param obj the object to be compared for equality with this
-     * {@code  Haplotype}.
+     * {@code  Haplotype}
      * @return {@code  true} if the specified object is an {@code  Haplotype}
-     * that represents the same haplotype segment as {@code  this},
-     * and returns {@code  false} otherwise.
+     * that represents the same haplotype segment as {@code  this}
      */
     @Override
     public boolean equals(Object obj) {
@@ -177,6 +185,11 @@ public class Haplotype {
                 return false;
             }
         }
+        for (int j=0; j<length; ++j) {
+            if (false==this.marker(j).equals(other.marker(j))) {
+                return false;
+            }
+        }
         return true;
     }
 
@@ -188,16 +201,18 @@ public class Haplotype {
      * <pre>
         int hash = 17;
         for (int j=0; j&lt;this.length(); ++j) {
-            hash += 29*hash + haps.allele(j, this.hapIndex());
+            hash += 29 * hash + haps.allele(j, this.hapIndex());
+            hash += 29 * hash + haps.marker(j).hashCode();
         }
      * </pre>
-     * @return a hash code value for the object.
+     * @return a hash code value for the object
      */
     @Override
     public int hashCode() {
         int hash = 17;
         for (int j = start; j<end; ++j) {
             hash += 29 * hash + haps.allele(j, hapIndex);
+            hash += 29 * hash + haps.marker(j).hashCode();
         }
         return hash;
     }
@@ -207,7 +222,7 @@ public class Haplotype {
      * exact details of the representation are unspecified and
      * subject to change.
      *
-     * @return a string representation of {@code this}.
+     * @return a string representation of {@code this}
      */
     @Override
     public String toString() {

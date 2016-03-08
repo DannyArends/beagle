@@ -21,9 +21,11 @@ package blbutil;
 import java.util.Arrays;
 
 /**
- * Class {@code IntList} represents a list of integers.
- * Class {@code IntList} supports a {@code clear()} method, but does not
+ * <p>Class {@code IntList} represents a list of integers.
+ * Class {@code IntList} supports a {@code clear()} method, but it does not
  * support a {@code remove()} method.
+ * </p>
+ * Class {@code IntList} is not thread-safe.
  *
  * @author Brian L. Browning {@code <browning@uw.edu>}
  */
@@ -52,34 +54,108 @@ public class IntList {
      * initial capacity.
      *
      * @param initCapacity the initial capacity of this list
-     * @throws IllegalArgumentException if {@code initCapacity<0}.
+     * @throws IllegalArgumentException if {@code initCapacity < 0}
      */
     public IntList(int initCapacity) {
         if (initCapacity < 0) {
-            String s = "initCapacity < 0: " + initCapacity;
-            throw new IllegalArgumentException(s);
+            throw new IllegalArgumentException(String.valueOf(initCapacity));
         }
         this.size = 0;
         this.values = new int[initCapacity];
     }
 
     /**
-     * Returns the integer at the specified position in this list.
-     * @param index the index of the returned integer.
-     * @return the integer at the specified position in this list.
+     * Returns the element at the specified position in this list.
+     * @param index the index of the element to be returned
+     * @return the element at the specified position in this list
      * @throws IndexOutOfBoundsException if
-     * {@code index<0 || index>=size}.
+     * {@code index < 0 || index >= this.size()}
      */
     public int get(int index) {
         if (index < 0 && index >= size) {
-            throw new IndexOutOfBoundsException("index=" + index);
+            throw new IndexOutOfBoundsException(String.valueOf(index));
         }
         return values[index];
     }
 
     /**
+     * Replaces the element at the specified position in this list with the
+     * specified element.
+     * @param index the index of the element to be replaced
+     * @param element the element to be stored at the specified position
+     * in this list
+     * @return the previous element at the specified position in this list
+     * @throws IndexOutOfBoundsException if
+     * {@code index < 0 || index >= this.size()}
+     */
+    public int set(int index, int element) {
+        if (index < 0 && index >= size) {
+            throw new IndexOutOfBoundsException(String.valueOf(index));
+        }
+        int value = values[index];
+        values[index] = element;
+        return value;
+    }
+
+    /**
+     * Increments by one the element at the specified position in this list.
+     * @param index the index of the element to be incremented
+     * @return the previous element at the specified position in this list
+     * @throws IndexOutOfBoundsException if
+     * {@code index < 0 || index >= this.size()}
+     */
+    public int getAndIncrement(int index) {
+        if (index < 0 && index >= size) {
+            throw new IndexOutOfBoundsException(String.valueOf(index));
+        }
+        return values[index]++;
+    }
+
+    /**
+     * Decrements by one the element at the specified position in this list.
+     * @param index the index of the element to be decremented
+     * @return the previous element at the specified position in this list
+     * @throws IndexOutOfBoundsException if
+     * {@code index < 0 || index >= this.size()}
+     */
+    public int getAndDecrement(int index) {
+        if (index < 0 && index >= size) {
+            throw new IndexOutOfBoundsException(String.valueOf(index));
+        }
+        return values[index]--;
+    }
+
+    /**
+     * Increments by one the element at the specified position in this list.
+     * @param index the index of the element to be incremented
+     * @return the updated element at the specified position in this list
+     * @throws IndexOutOfBoundsException if
+     * {@code index < 0 || index >= this.size()}
+     */
+    public int incrementAndGet(int index) {
+        if (index < 0 && index >= size) {
+            throw new IndexOutOfBoundsException(String.valueOf(index));
+        }
+        return ++values[index];
+    }
+
+    /**
+     * Decrements by one the element at the specified position in this list.
+     * @param index the index of the element to be decremented
+     * @return the updated element at the specified position in this list
+     * @throws IndexOutOfBoundsException if
+     * {@code index < 0 || index >= this.size()}
+     */
+    public int decrementAndGet(int index) {
+        if (index < 0 && index >= size) {
+            throw new IndexOutOfBoundsException(String.valueOf(index));
+        }
+        return --values[index];
+    }
+
+    /**
      * Returns the number of elements in this list.
-     * @return the number of elements in this list.
+     * @return the number of elements in this list
      */
     public int size() {
         return size;
@@ -88,8 +164,7 @@ public class IntList {
     /**
      * Returns {@code true} if this list has no elements, and returns
      * {@code false} otherwise.
-     * @return {@code true} if this list has no elements, and returns
-     * {@code false} otherwise.
+     * @return {@code true} if this list has no elements
      */
     public boolean isEmpty() {
         return size==0;
@@ -99,16 +174,16 @@ public class IntList {
      * Returns an integer array containing the sequence of elements in this
      * list.
      * @return an integer array containing the sequence of elements in this
-     * list.
+     * list
      */
     public int[] toArray() {
-        return Arrays.copyOfRange(values, 0, size);
+        return Arrays.copyOf(values, size);
     }
 
     /**
      * Adds the specified integer to the end of this list.
      *
-     * @param element the integer to be added to the end of this list.
+     * @param element the integer to be added to the end of this list
      */
     public void add(int element) {
         if (size==values.length) {
@@ -126,14 +201,12 @@ public class IntList {
     }
 
     /**
-     * Returns a string representation of this list.  The
-     * exact details of the representation are unspecified and
-     * subject to change.
+     * Returns {@code java.util.Arrays.toString(this.toArray())}
      *
-     * @return a string representation of this list.
+     * @return {@code java.util.Arrays.toString(this.toArray())}
      */
     @Override
     public String toString() {
-        return Arrays.toString(Arrays.copyOf(values, size));
+        return Arrays.toString(toArray());
     }
 }

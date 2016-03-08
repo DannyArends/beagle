@@ -22,8 +22,11 @@ import blbutil.Const;
 import vcf.Marker;
 
 /**
- * Class {@code ChromInterval} represents a chromosome interval whose
+ * <p>Class {@code ChromInterval} represents a chromosome interval whose
  * end points are genome coordinates.
+ * </p>
+ *
+ * Instances of class {@code ChromInterval} are immutable.
  *
  * @author Brian L. Browning {@code <browning@uw.edu>}
 */
@@ -76,7 +79,7 @@ public final class ChromInterval implements IntInterval,
             String s = "start=" + start + " end=" + end;
             throw new IllegalArgumentException(s);
         }
-        this.chromIndex = ChromIds.instance().indexOf(chrom);
+        this.chromIndex = ChromIds.instance().getIndex(chrom);
         this.start = start;
         this.end = end;
     }
@@ -235,7 +238,16 @@ public final class ChromInterval implements IntInterval,
     }
 
     /**
-     * Returns a hash code value for the object.
+     * <p>Returns a hash code value for the object.
+     * </p>
+     * <p>The hash code is defined by the following calculation:
+     * </p>
+     * <pre>
+        int hash = 7;
+        hash = 67 * hash + this.chromIndex();
+        hash = 67 * hash + this.start();
+        hash = 67 * hash + this.end();
+     * </pre>
      * @return a hash code value for the object.
      */
     @Override
@@ -281,6 +293,7 @@ public final class ChromInterval implements IntInterval,
     /**
      * Returns the string:
      * {@code this.chrom() + ":" + this.start() + "-" + this.end()}
+     * @return {@code this.chrom() + ":" + this.start() + "-" + this.end()}
      */
     @Override
     public String toString() {

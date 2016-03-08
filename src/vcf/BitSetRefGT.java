@@ -19,15 +19,17 @@
 package vcf;
 
 import beagleutil.Samples;
-import blbutil.Const;
 import java.util.BitSet;
 
 /**
- * <p>Class {@code BitSetRefGT} represent represents genotype emission
- * probabilities for a set of reference samples at a single marker.
+ * <p>Class {@code BitSetRefGT} represents genotype emission
+ * probabilities for a list reference samples with phased, non-missing
+ * genotypes at a single marker.
  * The genotype emission probabilities are determined by the called
- * genotypes for the samples.  All genotypes are required to be phased and
- * to have no missing alleles.
+ * genotypes for the reference samples.
+ * </p>
+ * <p>Class {@code BitSetRefGT} stores alleles using
+ * {@code java.util.BitSet} objects.
  * </p>
  * <p>Instances of class {@code BitSetRefGT} are immutable.
  * </p>
@@ -36,11 +38,6 @@ import java.util.BitSet;
  */
 public final class BitSetRefGT implements VcfEmission {
 
-    /**
-     * The VCF FORMAT code for genotype data: "GT".
-     */
-    private static final String GT_FORMAT = "GT";
-
     private final int bitsPerAllele;
     private final Marker marker;
     private final Samples samples;
@@ -48,59 +45,41 @@ public final class BitSetRefGT implements VcfEmission {
     private final BitSet allele2;
 
     /**
-     * Constructs a new {@code LowMemRefGT} instance representing
-     * the specified VCF record's GT format field data.
+     * Creates a new {@code BitSetRefGT} instance from a VCF record
+     * storing phased, non-missing reference genotypes.
      *
-     * @param rec a VCF record.
+     * @param vcfHeader meta-information lines and header line for the
+     * specified VCF record
+     * @param vcfRecord a VCF record corresponding to the specified
+     * {@code vcfHeader} object
      *
-     * @throws IllegalArgumentException if {@code rec.nSamples()==0}.
-     * @throws IllegalArgumentException if the VCF record does not have a
-     * GT format field.
-     * @throws IllegalArgumentException if any genotype has a missing allele
-     * or if any genotype is unphased.
-     * @throws NullPointerException if {@code rec==null}.
+     * @throws IllegalArgumentException if a format error is detected
+     * in the VCF record or if any allele is missing or unphased
+     * @throws IllegalArgumentException if {@code rec.nSamples() == 0}
+     * @throws IllegalArgumentException if the header line
+     * or VCF record does not have a "GT" format field
+     * @throws NullPointerException if
+     * {@code vcfHeader == null || vcfRecord == null}
      */
-    public BitSetRefGT(VcfRecord rec) {
-        if (rec.nSamples()==0) {
-            throw new IllegalArgumentException("missing sample data: " + rec);
-        }
-        if (rec.hasFormat(GT_FORMAT)==false) {
-            throw new IllegalArgumentException("missing GT FORMAT: " + rec);
-        }
-        checkAlleles(rec);
-        this.bitsPerAllele = bitsPerAllele(rec.marker());
-        this.marker = rec.marker();
-        this.samples = rec.samples();
-        this.allele1 = new BitSet(rec.nSamples()*bitsPerAllele);
-        this.allele2 = new BitSet(rec.nSamples()*bitsPerAllele);
-        storeAlleles(rec, bitsPerAllele, allele1, allele2);
+    public BitSetRefGT(VcfHeader vcfHeader, String vcfRecord) {
+        this(new VcfRecGTParser(vcfHeader, vcfRecord));
     }
 
-    private static void checkAlleles(VcfRecord rec) {
-        int nAlleles = rec.marker().nAlleles();
-        for (int sample=0, n=rec.nSamples(); sample<n; ++sample) {
-            byte a1 = rec.gt(sample, 0);
-            byte a2 = rec.gt(sample, 1);
-            if (rec.isPhased(sample)==false) {
-                String sampleId = rec.samples().id(sample);
-                String s = "Reference genotype is not phased for sample: "
-                        + sampleId + " marker: " + rec.marker();
-                throw new IllegalArgumentException(s);
-            }
-            if (a1 < 0 || a2 < 0) {
-                String sampleId = rec.samples().id(sample);
-                String s = "Reference genotype has a missing allele for sample: "
-                        + sampleId + " marker: " + rec.marker();
-                throw new IllegalArgumentException(s);
-            }
-            if (a1 >= nAlleles || a2 >= nAlleles) {
-                String sampleId = rec.samples().id(sample);
-                String s = "Invalid allele index (" + Math.max(a1, a2)
-                        + ") for sample: " + sampleId + " marker: "
-                        + rec.marker();
-                throw new IllegalArgumentException(s);
-            }
-        }
+    /**
+     * Creates a new {@code VcfEmission} instance from a VCF record
+     * containing phased, non-missing genotypes for a list of reference samples.
+     * @param gtp a parser for the VCF record
+     * @throws IllegalArgumentException if a format error, a missing genotype,
+     * or an unphased genotype is detected in the VCF record
+     * @throws NullPointerException if {@code gtp==null}
+     */
+    public BitSetRefGT(VcfRecGTParser gtp) {
+        this.marker = gtp.marker();
+        this.samples = gtp.samples();
+        this.bitsPerAllele = bitsPerAllele(marker);
+        this.allele1 = new BitSet(gtp.nSamples()*bitsPerAllele);
+        this.allele2 = new BitSet(gtp.nSamples()*bitsPerAllele);
+        storeAlleles(gtp, bitsPerAllele, allele1, allele2);
     }
 
     private static int bitsPerAllele(Marker marker) {
@@ -109,34 +88,52 @@ public final class BitSetRefGT implements VcfEmission {
         return nStorageBits;
     }
 
-    private static void storeAlleles(VcfRecord rec, int bitsPerAllele,
+    private static void storeAlleles(VcfRecGTParser gtp, int bitsPerAllele,
             BitSet allele1, BitSet allele2) {
-        int index1 = 0;
-        int index2 = 0;
-        for (int sample=0, n=rec.nSamples(); sample<n; ++sample) {
-            byte a1 = rec.gt(sample, 0);
-            byte a2 = rec.gt(sample, 1);
-
-            int mask = 1;
-            for (int k=0; k<bitsPerAllele; ++k) {
-                if ((a1 & mask)==mask) {
-                    allele1.set(index1);
-                }
-                ++index1;
-                mask <<= 1;
+        int nSamples = gtp.nSamples();
+        for (int sample=0; sample<nSamples; ++sample) {
+            int a1 = gtp.allele1();
+            int a2 = gtp.allele2();
+            if (gtp.isPhased()==false || a1 == -1 || a2 == -2) {
+                String s = "Unphased or missing reference genotype at marker: "
+                        + gtp.marker();
+                throw new IllegalArgumentException(s);
             }
-
-            mask = 1;
-            for (int k=0; k<bitsPerAllele; ++k) {
-                if ((a2 & mask)==mask) {
-                    allele2.set(index2);
-                }
-                ++index2;
-                mask <<= 1;
+            storeAllele(allele1, sample, bitsPerAllele, a1);
+            storeAllele(allele2, sample, bitsPerAllele, a2);
+            if (sample + 1 < nSamples) {
+                gtp.nextSample();
             }
         }
     }
 
+    private static void storeAllele(BitSet alleles, int sample,
+            int bitsPerAllele, int allele) {
+        int index = sample*bitsPerAllele;
+        int mask = 1;
+        for (int k=0; k<bitsPerAllele; ++k) {
+            if ((allele & mask)==mask) {
+                alleles.set(index);
+            }
+            ++index;
+            mask <<= 1;
+        }
+    }
+
+    @Override
+    public boolean isPhased(int sample) {
+        if (sample < 0  || sample >= this.nSamples()) {
+            throw new IllegalArgumentException(String.valueOf(sample));
+        }
+        return true;
+    }
+
+    /**
+     * Returns the samples. The returned samples are the filtered samples
+     * after all sample exclusions.
+     *
+     * @return the samples.
+     */
     @Override
     public Samples samples() {
         return samples;
@@ -148,14 +145,18 @@ public final class BitSetRefGT implements VcfEmission {
     }
 
     @Override
-    public Marker marker() {
-        return marker;
+    public int nHaps() {
+        return 2*samples.nSamples();
     }
 
+    @Override
+    public int nHapPairs() {
+        return samples.nSamples();
+    }
 
     @Override
-    public boolean isMissingData() {
-        return false;
+    public Marker marker() {
+        return marker;
     }
 
     @Override
@@ -164,30 +165,41 @@ public final class BitSetRefGT implements VcfEmission {
     }
 
     @Override
-    public float gl(int sample, byte allele1, byte allele2) {
+    public float gl(int sample, int allele1, int allele2) {
+        if (allele1 < 0 || allele1 >= marker.nAlleles()) {
+            throw new IndexOutOfBoundsException(String.valueOf(allele1));
+        }
+        if (allele2 < 0 || allele2 >= marker.nAlleles()) {
+            throw new IndexOutOfBoundsException(String.valueOf(allele2));
+        }
         boolean matches = (allele1==allele1(sample) && allele2==allele2(sample));
-        return matches ? 1.0f : 0.0f;    }
-
-    @Override
-    public boolean isPhased(int sample) {
-        return true;
+        return matches ? 1.0f : 0.0f;
     }
 
     @Override
-    public byte allele1(int sample) {
-        return allele(allele1, sample);
+    public int allele1(int sample) {
+        return allele(allele1, bitsPerAllele, sample);
     }
 
     @Override
-    public byte allele2(int sample) {
-        return allele(allele2, sample);
+    public int allele2(int sample) {
+        return allele(allele2, bitsPerAllele, sample);
     }
 
-    private byte allele(BitSet bits, int sample) {
+    @Override
+    public int allele(int hap) {
+        int sample = hap/2;
+        return (hap & 1) == 0 ? allele1(sample) : allele2(sample);
+    }
+
+    private int allele(BitSet bits, int bitsPerAllele, int sample) {
+        if (sample >= samples.nSamples()) {
+            throw new IndexOutOfBoundsException(String.valueOf(sample));
+        }
         int start = bitsPerAllele*sample;
         int end = start + bitsPerAllele;
-        byte allele = 0;
-        byte mask = 1;
+        int allele = 0;
+        int mask = 1;
         for (int j=start; j<end; ++j) {
             if (bits.get(j)) {
                 allele += mask;
@@ -197,31 +209,44 @@ public final class BitSetRefGT implements VcfEmission {
         return allele;
     }
 
+    @Override
+    public int nAlleles() {
+        return this.marker().nAlleles();
+    }
+
+    @Override
+    public boolean storesNonMajorIndices() {
+        return false;
+    }
+
+    @Override
+    public int majorAllele() {
+        String s = "this.storesNonMajorIndices()==false";
+        throw new UnsupportedOperationException(s);
+    }
+
+    @Override
+    public int alleleCount(int allele) {
+        String s = "this.storesNonMajorIndices()==false";
+        throw new UnsupportedOperationException(s);
+    }
+
+    @Override
+    public int hapIndex(int allele, int copy) {
+        String s = "this.storesNonMajorIndices()==false";
+        throw new UnsupportedOperationException(s);
+    }
+
     /**
      * Returns the data represented by {@code this} as a VCF
-     * record with a GT format field.
+     * record with a GT format field. The returned VCF record
+     * will have missing QUAL and INFO fields, will have "PASS"
+     * in the filter field, and will have a GT format field.
      * @return the data represented by {@code this} as a VCF
-     * record with a GT format field.
+     * record with a GT format field
      */
     @Override
     public String toString() {
-        String missingField = ".";
-        StringBuilder sb = new StringBuilder();
-        sb.append(marker);
-        sb.append(Const.tab);
-        sb.append(missingField);
-        sb.append(Const.tab);
-        sb.append("PASS");
-        sb.append(Const.tab);
-        sb.append(missingField);
-        sb.append(Const.tab);
-        sb.append("GT");
-        for (int j=0, n=samples.nSamples(); j<n; ++j) {
-            sb.append(Const.tab);
-            sb.append(allele1(j));
-            sb.append(Const.phasedSep);
-            sb.append(allele2(j));
-        }
-        return sb.toString();
+        return toVcfRec();
     }
 }

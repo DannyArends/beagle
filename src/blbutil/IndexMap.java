@@ -21,10 +21,14 @@ package blbutil;
 import java.util.Arrays;
 
 /**
- * Class {@code IndexMap} is a map whose keys are a bounded set of
+ * <p>Class {@code IndexMap} is a map whose keys are a bounded set of
  * non-negative integers and whose values are integers.
- * Class {@code IndexMap} supports a {@code clear()} method, but it does not
+ * </p>
+ * <p>Class {@code IndexMap} supports a {@code clear()} method, but it does not
  * support a {@code remove()} method.
+ * </p>
+ * <p>Class {@code IndexMap} is not thread-safe.
+ * </p>
  *
  * @author Brian L. Browning {@code <browning@uw.edu>}
  */
@@ -36,29 +40,16 @@ public class IndexMap {
     private int size = 0;
 
     /**
-     * Creates a new instance of {@code IndexMap} whose keys are
-     * non-negative integers less than or equal to the specified
-     * maximum key. The instance's {@code nil()} method will return
-     * {@code Integer.MIN_VALUE}.
-     * @param maxKey the maximum key.
-     * @throws IllegalArgumentException if {@code maxKey<0}
-     */
-    public IndexMap(int maxKey) {
-        this(maxKey, Integer.MIN_VALUE);
-    }
-
-    /**
-     * Creates a new instance of {@code IndexMap} whose keys are
-     * non-negative integers less than or equal to the specified
-     * maximum key.
-     * @param maxKey the maximum key.
+     * Creates a new instance of {@code IndexMap} whose {@code nil()} method
+     * will return the specified {@code nil} value.
+     * @param maxKey the maximum key
      * @param nil the value that will be returned by the instance's
-     * {@code get()} method if a key has no assigned value.
-     * @throws IllegalArgumentException if {@code maxKey<0}
+     * {@code get()} method if a key has no assigned value
+     * @throws IllegalArgumentException if {@code maxKey < 0}
      */
     public IndexMap(int maxKey, int nil) {
         if (maxKey < 0) {
-            throw new IllegalArgumentException("maxKey<0: " + maxKey);
+            throw new IllegalArgumentException(String.valueOf(maxKey));
         }
         this.nil = nil;
         this.values = new int[maxKey+1];
@@ -70,7 +61,7 @@ public class IndexMap {
      * Returns the value that is returned by {@code this.get()} if
      * a key has no assigned value.
      * @return the value that is returned by {@code this.get()} if
-     * a key has no assigned value.
+     * a key has no assigned value
      */
     public int nil() {
         return nil;
@@ -84,10 +75,11 @@ public class IndexMap {
      * @param key the key
      * @param value the value
      * @return the previous value associated with {@code key}, or
-     * {@code this.nil()} if no such previous value exists.
+     * {@code this.nil()} if no such previous value exists
      *
-     * @throws IllegalArgumentException if {@code value==this.nil()}
-     * @throws IndexOutOfBoundsException if {@code key< 0 || key>this.maxKey()}
+     * @throws IllegalArgumentException if {@code value == this.nil()}
+     * @throws IndexOutOfBoundsException if
+     * {@code key < 0 || key > this.maxKey()}
      */
     public int put(int key, int value) {
         if (value==nil) {
@@ -102,14 +94,14 @@ public class IndexMap {
     }
 
     /**
-     * Returns the specified key in the map, or {@code this.nil()} if the
-     * specified key is not contained in the map.
-     * @param key the key.
-     * @return the specified key in the map, or {@code this.nil()} if the
-     * specified key is not contained in the map.
+     * Returns the value associated with the specified key, or
+     * {@code this.nil()} if the specified key is not contained in the map.
+     * @param key the key
+     * @return the value associated with the specified key, or
+     * {@code this.nil()} if the specified key is not contained in the map.
      *
      * @throws IndexOutOfBoundsException if
-     * {@code key< 0 || key>this.maxKey()}
+     * {@code key < 0 || key > this.maxKey()}
      */
     public int get(int key) {
         return values[key];
@@ -118,16 +110,16 @@ public class IndexMap {
     /**
      * Returns the number of key-value pairs in the map.
      *
-     * @return the number of key-value pairs in the map.
+     * @return the number of key-value pairs in the map
      */
     public int size() {
         return size;
     }
 
     /**
-     * Returns the maximum key value.
+     * Returns the maximum key.
      *
-     * @return the maximum key value.
+     * @return the maximum key
      */
     public int maxKey() {
         return keys.length-1;
@@ -144,16 +136,14 @@ public class IndexMap {
     }
 
     /**
-     * Returns the specified key in an enumeration of the keys-value
-     * pairs in the map.
-     * @param index an index in an enumeration of the keys-value
-     * pairs in the map.
+     * Returns the specified key in an enumeration of the keys in the map.
+     * @param index an index of an element in the enumeration
      * @return the specified key in an enumeration of the keys-value
-     * pairs in the map.
+     * pairs in the map
      * @throws IndexOutOfBoundsException if
-     * {@code index<0 || index>=this.size()}
+     * {@code index < 0 || index >= this.size()}
      */
-    public int enumKey(int index) {
+    public int enumeratedKey(int index) {
         if (index>=size) {
             throw new IndexOutOfBoundsException(String.valueOf(index));
         }
@@ -161,16 +151,18 @@ public class IndexMap {
     }
 
     /**
-     * Returns the specified value in an enumeration of the keys-value
-     * pairs in the map.
-     * @param index an index in an enumeration of the keys-value
-     * pairs in the map.
-     * @return the specified value in an enumeration of the keys-value
-     * pairs in the map.
+     * Returns the value associated with the specified key
+     * in an enumeration of the keys in the map.
+     * If {@code (index >= 0 && index < this.size())}, then the returned value
+     * will satisfy:
+     * {@code this.get(this.enumeratedKey(index)==this.enumeratedValue(index)}.
+     * @param index an index of an element in the enumeration
+     * @return the value associated with the specified key
+     * in an enumeration of the keys in the map
      * @throws IndexOutOfBoundsException if
-     * {@code index<0 || index>=this.size()}
+     * {@code index < 0 || index >= this.size()}
      */
-    public int enumValue(int index) {
+    public int enumeratedValue(int index) {
         if (index>=size) {
             throw new IndexOutOfBoundsException(String.valueOf(index));
         }
@@ -190,9 +182,9 @@ public class IndexMap {
         sb.append(size);
         sb.append(" {");
         for (int j=0; j<size; ++j) {
-            sb.append(enumKey(j));
+            sb.append(enumeratedKey(j));
             sb.append(" : ");
-            sb.append(enumValue(j));
+            sb.append(enumeratedValue(j));
             if (j+1 < size) {
                 sb.append(Const.comma);
             }

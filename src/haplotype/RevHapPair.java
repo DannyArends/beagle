@@ -18,6 +18,7 @@
  */
 package haplotype;
 
+import beagleutil.Samples;
 import vcf.Marker;
 import vcf.Markers;
 
@@ -25,33 +26,38 @@ import vcf.Markers;
  * <p>Class {@code RevHapPair} is a wrapper for a {@code HapPair}
  * instance.  The wrapper reverses the order of markers in the wrapped object.
  * </p>
- * Instances of class {@code RevHapPair} are immutable.
+ * <p>Instances of class {@code RevHapPair} are immutable.
+ * </p>
  *
  * @author Brian L. Browning {@code <browning@uw.edu>}
  */
 public final class RevHapPair implements HapPair {
 
-    private final int lastMarker;
+    /*
+     * All instances of the {@code HapPair} interface are required to be
+     * immutable.
+     */
     private final HapPair hapPair;
+    private final int lastMarker;
 
     /**
-     * Creates a new {@code RevHapPair} instance.
+     * Creates a new {@code RevHapPair} instance from the specified data.
      * @param hapPair the haplotype pair that will be wrapped by the
-     * new instance.
-     * @throws NullPointerException if {@code hapPair==null}.
+     * new instance
+     * @throws NullPointerException if {@code hapPair == null}
      */
     public RevHapPair(HapPair hapPair) {
-        this.lastMarker = hapPair.nMarkers() - 1;
         this.hapPair = hapPair;
+        this.lastMarker = hapPair.nMarkers() - 1;
     }
 
     @Override
-    public byte allele1(int marker) {
+    public int allele1(int marker) {
         return hapPair.allele1(lastMarker - marker);
     }
 
     @Override
-    public byte allele2(int marker) {
+    public int allele2(int marker) {
         return hapPair.allele2(lastMarker - marker);
     }
 
@@ -71,7 +77,12 @@ public final class RevHapPair implements HapPair {
     }
 
     @Override
-    public int idIndex() {
-        return hapPair.idIndex();
+    public Samples samples() {
+        return hapPair.samples();
+    }
+
+    @Override
+    public int sampleIndex() {
+        return hapPair.sampleIndex();
     }
 }

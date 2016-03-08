@@ -27,8 +27,10 @@ import java.util.Random;
 import vcf.GL;
 
 /**
- * Class {@code SingleBaum} implements the Baum forward and backward
+ * <p>Class {@code SingleBaum} implements the Baum forward and backward
  * algorithms for a hidden Markov model (HMM) of an individual's genotype data.
+ * </p>
+ * Instances of class {@code SingleBaum} are not thread-safe.
  *
  * @author Brian L. Browning {@code <browning@uw.edu>}
  */
@@ -37,7 +39,7 @@ public class SingleBaum implements SingleBaumInterface {
     private final Dag dag;
     private final GL gl;
     private final int nMarkers;
-    private final int nCopies;
+    private final int nSamplesPerIndividual;
     private final long seed;
     private final Random random;
 
@@ -45,8 +47,8 @@ public class SingleBaum implements SingleBaumInterface {
     private final int[] node2;
     private final double[] nodeValue;
 
-    private final byte[][] alleles1;
-    private final byte[][] alleles2;
+    private final int[][] alleles1;
+    private final int[][] alleles2;
 
     private final SingleBaumLevel[] levels;
     private final SingleNodes fwdNodes;
@@ -56,40 +58,48 @@ public class SingleBaum implements SingleBaumInterface {
     private int arrayIndex = -9999;
 
     /**
-     * Creates a new {@code SingleBaum} instance.
+     * Creates a new {@code SingleBaum} instance from the specified data.
      *
      * @param dag the directed acyclic graph that determines the
-     * transition probabilities.
-     * @param gl the emission probabilities.
-     * @param seed the initial random seed.
-     * @param nCopies the number of haplotype pairs that will be sampled for
-     * each individual.
+     * transition probabilities
+     * @param gl the emission probabilities
+     * @param seed the random seed
+     * @param nSamplesPerIndividual the number of haplotype pairs that
+     * will be sampled for each individual
+     * @param lowMem {@code true} if a low memory algorithm should be used, and
+     * {@code false} otherwise
      *
-     * @throws IllegalArgumentException
-     * if {@code nCopies<1 || dag.markers().equals(gl.markers())==false}
-     * @throws NullPointerException if {@code dag==null || gl==null}
+     * @throws IllegalArgumentException if
+     * {@code dag.markers().equals(gl.markers()) == false}
+     * @throws IllegalArgumentException if {@code nSamplesPerIndividual < 1}
+     * @throws NullPointerException if {@code dag == null || gl == null}
      */
-    public SingleBaum(Dag dag, GL gl, long seed, int nCopies) {
+    public SingleBaum(Dag dag, GL gl, long seed, int nSamplesPerIndividual,
+            boolean lowMem) {
         if (dag.markers().equals(gl.markers())==false) {
             throw new IllegalArgumentException("inconsistent markers");
         }
-        if (nCopies < 1) {
-            throw new IllegalArgumentException("nCopies<1: " + nCopies);
+        if (nSamplesPerIndividual < 1) {
+            throw new IllegalArgumentException(
+                    String.valueOf(nSamplesPerIndividual));
         }
         this.dag = dag;
         this.gl = gl;
-        this.nMarkers = dag.nMarkers();
-        this.nCopies = nCopies;
+        this.nMarkers = dag.nLevels();
+        this.nSamplesPerIndividual = nSamplesPerIndividual;
         this.seed = seed;
         this.random = new Random(seed);
 
-        this.node1 = new int[nCopies];
-        this.node2 = new int[nCopies];
-        this.nodeValue = new double[nCopies];
-        this.alleles1 = new byte[nCopies][gl.nMarkers()];
-        this.alleles2 = new byte[nCopies][gl.nMarkers()];
+        this.node1 = new int[nSamplesPerIndividual];
+        this.node2 = new int[nSamplesPerIndividual];
+        this.nodeValue = new double[nSamplesPerIndividual];
+        this.alleles1 = new int[nSamplesPerIndividual][gl.nMarkers()];
+        this.alleles2 = new int[nSamplesPerIndividual][gl.nMarkers()];
 
-        int size = (int) Math.ceil(Math.sqrt(1 + 8*dag.nMarkers())/2.0) + 1;
+        int size = dag.nLevels();
+        if (lowMem) {
+            size = (int) Math.ceil(Math.sqrt(1 + 8*dag.nLevels())/2.0) + 1;
+        }
         this.levels = new SingleBaumLevel[size];
         for (int j=0; j<levels.length; ++j) {
             levels[j] = new SingleBaumLevel(dag, gl);
@@ -109,8 +119,8 @@ public class SingleBaum implements SingleBaumInterface {
     }
 
     @Override
-    public int nCopies() {
-        return nCopies;
+    public int nSamplesPerIndividual() {
+        return nSamplesPerIndividual;
     }
 
     @Override
@@ -134,7 +144,7 @@ public class SingleBaum implements SingleBaumInterface {
         checkGtProbs(gtProbs);
         forwardAlgorithm(sample);
         initSampleAlleles(currentLevel(), sample);
-        currentLevel().setInitialBackwardValues(bwdNodes);
+        setInitialBackwardNodesValues();
         setGtProbs(currentLevel(), gtProbs);
         for (int j=nMarkers-2; j>=0; --j) {
             SingleBaumLevel level = previousLevel(sample);
@@ -162,10 +172,9 @@ public class SingleBaum implements SingleBaumInterface {
     }
 
     private List<HapPair> hapList(int sample) {
-        List<HapPair> hapList = new ArrayList<>(2*nCopies);
-        for (int copy=0; copy<nCopies; ++copy) {
-            HapPair haps = new BitHapPair(gl.markers(),
-                    gl.samples().idIndex(sample),
+        List<HapPair> hapList = new ArrayList<>(2*nSamplesPerIndividual);
+        for (int copy=0; copy<nSamplesPerIndividual; ++copy) {
+            HapPair haps = new BitHapPair(gl.markers(), gl.samples(), sample,
                     alleles1[copy], alleles2[copy]);
             hapList.add(haps);
         }
@@ -174,7 +183,7 @@ public class SingleBaum implements SingleBaumInterface {
 
     private void initSampleAlleles(SingleBaumLevel level, int sample) {
         int m = level.marker();
-        for (int copy=0; copy<nCopies; ++copy) {
+        for (int copy=0; copy<nSamplesPerIndividual; ++copy) {
             int state = initialRandomState(level);
             node1[copy] = level.parentNode1(state);
             node2[copy] = level.parentNode2(state);
@@ -193,7 +202,7 @@ public class SingleBaum implements SingleBaumInterface {
                 return j;
             }
         }
-        return level.size()-1; // error in finite bit arithmetic encountered
+        return level.size()-1; // if reached due to rounding
     }
 
     private double parentSum(SingleBaumLevel level, int sample, int state) {
@@ -203,15 +212,15 @@ public class SingleBaum implements SingleBaumInterface {
         int edge2 = level.edge2(state);
         double tp1 = dag.condEdgeProb(marker, edge1);
         double tp2 = dag.condEdgeProb(marker, edge2);
-        byte symbol1 = dag.symbol(marker, edge1);
-        byte symbol2 = dag.symbol(marker, edge2);
+        int symbol1 = dag.symbol(marker, edge1);
+        int symbol2 = dag.symbol(marker, edge2);
         double ep = gl.gl(marker, sample, symbol1, symbol2);
         return fwdValue / ( ep*tp1*tp2 );
     }
 
     private void sampleAlleles(SingleBaumLevel level, int sample) {
         int m = level.marker();
-        for (int copy=0; copy<nCopies; ++copy) {
+        for (int copy=0; copy<nSamplesPerIndividual; ++copy) {
             int state = randomPreviousState(level, node1[copy], node2[copy],
                     nodeValue[copy]);
             node1[copy] = level.parentNode1(state);
@@ -269,11 +278,24 @@ public class SingleBaum implements SingleBaumInterface {
     }
 
     private void forwardAlgorithm(int sample) {
-        SingleBaumLevel.initializeNodes(fwdNodes);
+        fwdNodes.clear();
+        fwdNodes.sumUpdate(0, 0, 1f);
         this.windowIndex = -1;
         this.arrayIndex = levels.length - 1;
         for (int marker=0; marker<nMarkers; ++marker) {
             nextLevel().setForwardValues(fwdNodes, marker, sample);
         }
+    }
+
+    private void setInitialBackwardNodesValues() {
+        SingleBaumLevel level = currentLevel();
+        int marker = level.marker();
+        bwdNodes.clear();
+        for (int j=0, n=level.size(); j<n; ++j) {
+            int cn1 = dag.childNode(marker, level.edge1(j));
+            int cn2 = dag.childNode(marker, level.edge2(j));
+            bwdNodes.sumUpdate(cn1, cn2, 1f);
+        }
+        level.setBackwardValues(bwdNodes);
     }
 }

@@ -20,7 +20,7 @@ package vcf;
 
 import beagleutil.Samples;
 import blbutil.Const;
-import blbutil.FileIterator;
+import blbutil.FileIt;
 import blbutil.Filter;
 import blbutil.StringUtil;
 import java.io.File;
@@ -29,8 +29,9 @@ import java.util.Arrays;
 import java.util.List;
 
 /**
- * <p>Class {@code VcfHeader} represents the VCF meta-information lines and
- * the VCF header line that precede the first VCF record.
+ * <p>Class {@code VcfHeader} represents the Variant Call Format (VCF)
+ * meta-information lines and the Variant Call Format header line
+ * that precede the first Variant Call Format record.
  * </p>
  * <p>Instances of class {@code VcfHeader} are immutable.
  * </p>
@@ -42,39 +43,68 @@ public final class VcfHeader  {
     private static final String SHORT_HEADER_PREFIX= "#CHROM" + Const.tab + "POS"
             + Const.tab + "ID" + Const.tab + "REF" + Const.tab + "ALT"
             + Const.tab + "QUAL" + Const.tab + "FILTER" + Const.tab + "INFO";
+
     /**
      * A string equal to the first nine tab-delimited fields of a VCF header
-     * line.
+     * line that contains sample data.
      */
     public static final String HEADER_PREFIX =
             SHORT_HEADER_PREFIX + Const.tab + "FORMAT";
 
-    private static final int nShortHeaderFields
-            = StringUtil.countFields(SHORT_HEADER_PREFIX, Const.tab);
-    private static final int nLongHeaderFields
-            = StringUtil.countFields(HEADER_PREFIX, Const.tab);
+    private static final int sampleOffset = 9;
 
-    private final File file;   // null if source is standard input or unknown
+    private final File file;   // null if source is standard input
     private final VcfMetaInfo[] metaInfoLines;
     private final String headerLine;
     private final int nHeaderFields;
+    private final int[] includedIndices;
     private final Samples samples;
-    private final boolean[] filter;
 
     /**
      * Constructs a new {@code VcfHeader} object from the VCF
      * meta-information lines and the VCF header line returned by the
-     * specified {@code FileIterator}.
-     * @param it an iterator that returns lines of a VCF file.
-     * @param sampleFilter a sample filter.
+     * specified {@code FileIterator<String>}.  This constructor will advance
+     * the {@code FileIterator<String>} to the point before the first VCF record
+     * in the file.  The {@code VcfHeader} object will have no excluded samples.
+     * @param it an iterator that returns lines of VCF file
      *
-     * @throws IllegalArgumentException if any of the meta-information and
-     * header lines returned by the specified {@code FileIterator}
-     * do not conform to the VCF specification.
+     * @throws IllegalArgumentException if any of the meta-information lines
+     * returned by the specified {@code FileIterator<String>} does not conform
+     * to the VCF specification
+     * @throws IllegalArgumentException if the header lines returned by the
+     * specified {@code FileIterator<String>} does not conform to the VCF
+     * specification
+     * @throws IllegalArgumentException if no header line is returned by the
+     * specified {@code FileIterator<String>}
      *
-     * @throws NullPointerException if {@code it==null || sampleFilter==null}.
+     * @throws NullPointerException if {@code it == null}
      */
-    public VcfHeader(FileIterator<String> it, Filter<String> sampleFilter) {
+    public VcfHeader(FileIt<String> it) {
+        this(it, Filter.acceptAllFilter());
+    }
+    /**
+     * Constructs a new {@code VcfHeader} object from the VCF
+     * meta-information lines and the VCF header line returned by the
+     * specified {@code FileIterator<String>}.  This constructor will advance
+     * the {@code FileIterator<String>} to the point before the first VCF record in the file.
+     * @param it an iterator that returns lines of a VCF file
+     * @param sampleFilter a sample filter or {@code null}
+     *
+     * @throws IllegalArgumentException if any of the meta-information lines
+     * returned by the specified {@code FileIterator<String>} does not conform
+     * to the VCF specification
+     * @throws IllegalArgumentException if the header lines returned by the
+     * specified {@code FileIterator<String>} does not conform to the VCF
+     * specification
+     * @throws IllegalArgumentException if no header line is returned by the
+     * specified {@code FileIterator<String>}
+     *
+     * @throws NullPointerException if {@code it == null}
+     */
+    public VcfHeader(FileIt<String> it, Filter<String> sampleFilter) {
+        if (sampleFilter==null) {
+            sampleFilter = Filter.acceptAllFilter();
+        }
         List<VcfMetaInfo> metaInfo = new ArrayList<>(20);
         String candidateHeader = null;
         while (it.hasNext() && candidateHeader==null) {
@@ -82,94 +112,71 @@ public final class VcfHeader  {
             if (line.startsWith(VcfMetaInfo.PREFIX)) {
                 metaInfo.add(new VcfMetaInfo(line));
             }
-            else if (line.startsWith(SHORT_HEADER_PREFIX)) {
+            else {
                 candidateHeader = line;
             }
-            else {
-                headerError(line, it.file());
-            }
         }
-        assert candidateHeader != null;
+        checkHeaderLine(candidateHeader, it.file());
         String[] headerFields = StringUtil.getFields(candidateHeader, Const.tab);
-        int nSamples = nSamples(headerFields, candidateHeader, it.file());
 
         this.file = it.file();
         this.metaInfoLines = metaInfo.toArray(new VcfMetaInfo[0]);
         this.headerLine = candidateHeader;
         this.nHeaderFields = headerFields.length;
-        this.filter = new boolean[nSamples];
-        this.samples = getSamplesAndSetFilter(headerFields, sampleFilter, filter);
+        this.includedIndices = includedIndices(headerFields, sampleFilter);
+        this.samples = samples(headerFields, includedIndices);
     }
 
-    private static boolean headerError(String line, File file) {
-        String src = "File source: " + (file!=null ? file : "stdin or unknown");
-        if (line.startsWith("#")==false) {
+    private static void checkHeaderLine(String line, File file) {
+        if (line == null || line.startsWith("#")==false) {
             String s = "Missing line (#CHROM ...) after meta-information lines"
-                    + Const.nl + src + Const.nl + line;
+                    + Const.nl + "File source: " + (file==null ? "stdin" : file)
+                    + Const.nl + line;
             throw new IllegalArgumentException(s);
         }
-        String[] fields = StringUtil.getFields(line, nShortHeaderFields);
-        fields = Arrays.copyOf(fields, nShortHeaderFields);
-        String[] headerFields = StringUtil.getFields(SHORT_HEADER_PREFIX,
-                Const.tab);
-        if (Arrays.equals(fields, headerFields)) {
-            String s = "Header line is white-space delimited, but not tab "
-                    + "delimited" + Const.nl + src + Const.nl + line;
-            throw new IllegalArgumentException(s);
-        }
-        else {
-            String s = "Error in meta-information line or header line"
-                    + Const.nl + src + Const.nl + line;
-            throw new IllegalArgumentException(s);
-        }
-    }
-
-    private static int nSamples(String[] headerFields, String header, File file) {
-        if (headerFields.length==nShortHeaderFields) {
-            return 0;
-        }
-        else if (headerFields.length==nLongHeaderFields) {
-            if (headerFields[nLongHeaderFields-1].equals("FORMAT")==false) {
-                String src = "File source: "
-                        + (file!=null ? file : "stdin or unknown");
-                String s = "Ninth field of header line is not \"FORMAT\""
-                        + Const.nl + src + Const.nl + header;
+        if (line.startsWith(HEADER_PREFIX) == false) {
+            if (line.equals(SHORT_HEADER_PREFIX)==false) {
+                String s = "Missing header line (file source: "
+                        + (file==null ? "stdin" : file) + ")"
+                        + Const.nl + "The first line after the initial meta-information lines"
+                        + Const.nl + "does not begin with: "
+                        + Const.nl + HEADER_PREFIX
+                        + Const.nl + line
+                        + Const.nl + "The data fields in the header line must be tab-separated.";
                 throw new IllegalArgumentException(s);
             }
-            return 0;
-        }
-        else {
-            return (headerFields.length - nLongHeaderFields);
         }
     }
 
-    private static Samples getSamplesAndSetFilter(String[] headerFields,
-            Filter<String> sampleFilter, boolean[] filter) {
-        if (filter.length==0) {
-            return new Samples(new int[0]);
-        }
-        else {
-            List<String> filteredIds = new ArrayList<>(filter.length);
-            for (int j=0; j<filter.length; ++j) {
-                String id = headerFields[nLongHeaderFields + j];
-                if (sampleFilter.accept(id)) {
-                    filteredIds.add(id);
-                }
-                else {
-                    filter[j] = true;
-                }
+    private static int[] includedIndices(String[] headerFields,
+            Filter<String> sampleFilter) {
+        int nUnfilteredSamples = Math.max(headerFields.length - sampleOffset, 0);
+        int[] includedIndices = new int[nUnfilteredSamples];
+        int index = 0;
+        for (int j=0; j<nUnfilteredSamples; ++j) {
+            if (sampleFilter.accept(headerFields[sampleOffset + j])) {
+                includedIndices[index++] = j;
             }
-            return Samples.fromIds(filteredIds.toArray(new String[0]));
         }
+        if (index < includedIndices.length) {
+            includedIndices = Arrays.copyOf(includedIndices, index);
+        }
+        return includedIndices;
+    }
+
+    private Samples samples(String[] headerFields, int[] includedIndices) {
+        String[] ids = new String[includedIndices.length];
+        for (int j=0; j<ids.length; ++j) {
+            ids[j] = headerFields[sampleOffset + includedIndices[j]];
+        }
+        return Samples.fromIds(ids);
     }
 
     /**
      * Returns the file from which data are read, or returns
-     * {@code null} if the source is standard input or if
-     * the file source is unknown.
-     * @return the file from which data are read, or returns
-     * {@code null} if the source is standard input or if
-     * the file source is unknown.
+     * {@code null} if the source is standard input.
+     * @return the file from which data are read, or
+     * {@code null} if the source is standard input
      */
     public File file() {
         return file;
@@ -177,10 +184,10 @@ public final class VcfHeader  {
 
     /**
      * Returns the number of VCF meta-information lines. VCF meta-information
-     * lines are lines that precede the VCF header line.  The first
-     * two characters of a VCF meta-information line must be "##".
+     * lines are lines that precede the VCF header line. A VCF meta-information
+     * line must begin with "##".
      *
-     * @return the number of VCF meta-information lines.
+     * @return the number of VCF meta-information lines
      */
      public int nMetaInfoLines() {
          return metaInfoLines.length;
@@ -189,11 +196,11 @@ public final class VcfHeader  {
     /**
       * Returns the specified VCF meta-information line.
 
-      * @param index a VCF meta-information line index.
-      * @return the specified VCF meta-information line.
+      * @param index a VCF meta-information line index
+      * @return the specified VCF meta-information line
       *
       * @throws IndexOutOfBoundsException if
-      * {@code index < 0 || index >= this.nMetaInfoLines()}.
+      * {@code index < 0 || index >= this.nMetaInfoLines()}
       */
      public VcfMetaInfo metaInfoLine(int index) {
          return metaInfoLines[index];
@@ -201,33 +208,17 @@ public final class VcfHeader  {
 
      /**
       * Returns the VCF header line.  The VCF header line begins with "#CHROM".
-      * @return the VCF header line.
+      * @return the VCF header line
       */
      public String headerLine() {
          return headerLine;
      }
 
      /**
-      * Returns {@code true} if the specified sample in the VCF
-      * header line is excluded, and returns {@code false} otherwise.
-      *
-      * @param index a sample index for the list of unfiltered samples.
-      *
-      * @return {@code true} if the specified sample in the VCF
-      * header line is excluded, and returns {@code false} otherwise.
-      *
-      * @throws IndexOutOfBoundsException if
-      * {@code index < 0 || index >= this.nUnfilteredSamples()}.
-      */
-     public boolean filter(int index) {
-         return filter[index];
-     }
-
-     /**
       * Returns the number of fields in the VCF header line before sample
       * exclusions.
       * @return the number of fields in the VCF header line before sample
-      * exclusions.
+      * exclusions
       */
      public int nHeaderFields() {
          return nHeaderFields;
@@ -235,15 +226,36 @@ public final class VcfHeader  {
 
      /**
       * Returns the number of samples before sample exclusions.
-      * @return the number of samples before sample exclusions.
+      * @return the number of samples before sample exclusions
       */
      public int nUnfilteredSamples() {
-         return filter.length;
+         return Math.max(0, nHeaderFields - sampleOffset);
+     }
+
+     /**
+      * Returns the index of the specified sample in the the list original
+      * list of samples before sample exclusions.
+      * @param sample a sample index
+      * @return the index of the specified sample in the the list original
+      * list of samples before sample exclusions
+      * @throws IndexOutOfBoundsException if
+      * {@code sample < 0 || sample >= this.nSamples()}
+      */
+     public int unfilteredSampleIndex(int sample) {
+         return includedIndices[sample];
+     }
+
+     /**
+      * Returns the number of samples after sample exclusions.
+      * @return the number of samples after sample exclusions
+      */
+     public int nSamples() {
+         return samples.nSamples();
      }
 
     /**
-     * Return the filtered list of samples after all sample exclusions.
-     * @return the filtered list of samples after all sample exclusions.
+     * Return the list of samples after sample exclusions.
+     * @return the list of samples after sample exclusions
      */
     public Samples samples() {
         return samples;
@@ -251,7 +263,7 @@ public final class VcfHeader  {
 
     /**
      * Returns {@code this.sample().ids()}.
-     * @return {@code this.sample().ids()}.
+     * @return {@code this.sample().ids()}
      */
     public String[] sampleIds() {
         return samples.ids();
@@ -261,7 +273,7 @@ public final class VcfHeader  {
      * Returns the VCF meta-information lines and the VCF header line used to
      * construct {@code this}.
      * @return the VCF meta-information lines and the VCF header line used to
-     * construct {@code this}.
+     * construct {@code this}
      */
     @Override
     public String toString() {

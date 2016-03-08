@@ -34,11 +34,10 @@ public class StringUtil {
      * Returns the number of delimited fields in the specified
      * string.  Returns 0 if the specified string has length 0.
      *
-     * @param s a string with 0 or more {@code delimiter} characters.
-     * @param delimiter the delimiter character.
-     * @return the number of delimited fields in the specified
-     * string.
-     * @throws NullPointerException if {@code s==null}.
+     * @param s a string
+     * @param delimiter a delimiter character
+     * @return the number of delimited fields in the specified string
+     * @throws NullPointerException if {@code s == null}
      */
     public static int countFields(String s, char delimiter) {
         int cnt = 0;
@@ -53,18 +52,18 @@ public class StringUtil {
     /**
      * Returns {@code Math.min(countFields(s, delimiter), max)}.
      *
+     * @param s a string with 0 or more {@code delimiter} characters
+     * @param delimiter the delimiter character
+     * @param max the maximum value that can be returned
      *
-     * @param s a string with 0 or more {@code delimiter} characters.
-     * @param delimiter the delimiter character.
-     * @param max the maximum value returned.
+     * @return {@code Math.min(countFields(s, delimiter), max)}
      *
-     * @return {@code Math.min(countFields(s, delimiter), max)}.
-     *
-     * @throws NullPointerException if {@code s==null}.
+     * @throws NullPointerException if {@code s == null}
      */
     public static int countFields(String s, char delimiter, int max) {
         int cnt = 0;
-        for (int j=0, n=s.length(); j<n && cnt<(max-1); ++j) {
+        int maxCnt = max - 1;
+        for (int j=0, n=s.length(); j<n && cnt<maxCnt; ++j) {
             if (s.charAt(j)==delimiter) {
                 ++cnt;
             }
@@ -85,20 +84,20 @@ public class StringUtil {
      * return an array of length one, whose single element is the specified
      * string.
      *
-     * @param s a string to split around the delimiter.
-     * @param delimiter the delimiter character.
+     * @param s a string
+     * @param delimiter a delimiter character
      *
-     * @return the array of strings computed by splitting the specified string
-     * around the specified delimiter.
+     * @return the array of strings obtained by splitting the specified string
+     * around the specified delimiter
      *
-     * @throws NullPointerException if {@code s==null}.
+     * @throws NullPointerException if {@code s == null}
      */
     public static String[] getFields(String s, char delimiter) {
         String[] fields = new String[countFields(s, delimiter)];
         int start = 0;
         for (int j=0; j<fields.length; ++j)  {
             int end = s.indexOf(delimiter, start);
-            fields[j] = (end>=-0) ? s.substring(start,end) : s.substring(start);
+            fields[j] = end>=0 ? s.substring(start,end) : s.substring(start);
             start = end + 1;
         }
         return fields;
@@ -106,19 +105,20 @@ public class StringUtil {
 
     /**
      * Returns an array obtained by splitting the specified string
-     * around the first {@code limit-1} occurrences of the specified
-     * delimiter.
+     * around the first {@code (limit - 1)} occurrences of the specified
+     * delimiter.  If the string contains fewer than {@code (limit - 1)}
+     * delimiter characters, the returned value will equal
+     * {@code StringUtil.getFields(s, delimiter)}
      *
-     * @param s a string to split around the specified delimiter.
-     * @param delimiter the delimiter character.
-     * @param limit the maximum length of the returned array.
+     * @param s a string
+     * @param delimiter a delimiter character
+     * @param limit the maximum length of the returned array
      *
      * @return an array obtained by splitting the specified string
-     * around the first {@code limit-1} occurrences of the specified
-     * delimiter.
+     * around the specified delimiter
      *
-     * @throws NullPointerException if {@code s==null}.
-     * @throws IllegalArgumentException if {@code limit<2}.
+     * @throws NullPointerException if {@code s == null}
+     * @throws IllegalArgumentException if {@code limit < 2 }
      */
     public static String[] getFields(String s, char delimiter, int limit) {
         if (limit < 2) {
@@ -138,64 +138,15 @@ public class StringUtil {
     }
 
     /**
-     * Returns the smallest index {@code i<s.length()} such that
-     * {@code (i>=start) && (s.charAt(i)>' ')} or
-     * {@code s.length()} if no such index exists.
-     *
-     * @param s a string.
-     * @param start an index in string {@code s}.
-     * @return the smallest index {@code i<s.length()} such that
-     * {@code (i>=start) && (s.charAt(i)>' ')} or
-     * {@code s.length()} if no such index exists.
-     *
-     * @throws NullPointerException if {@code s==null}.
-     * @throws IndexOutOfBoundsException if
-     * {@code start<0 || start>=s.length()}.
-     */
-    public static int nextNonWhiteSpace(String s, int start) {
-        if (s.charAt(start) <= ' ') {
-            int end = s.length();
-            while (++start<end && s.charAt(start) <= ' ') {
-            }
-        }
-        return start;
-    }
-
-    /**
-     * Returns the the smallest index {@code i<s.length()} such that
-     * {@code (i>=start) && (s.charAt(i)<=' ')} or
-     * {@code s.length()} if no such index exists.
-     *
-     * @param s a string.
-     * @param start an index in string {@code s}.
-     * @return  the the smallest index {@code i<s.length()} such that
-     * {@code (i>=start) && (s.charAt(i)<=' ')} or
-     * {@code s.length()} if no such index exists.
-     *
-     * @throws NullPointerException if {@code s==null}.
-     * @throws IndexOutOfBoundsException if
-     * {@code start<0 || start>=s.length()}.
-     */
-    public static int nextWhiteSpace(String s, int start) {
-        if (s.charAt(start) > ' ') {
-            int end = s.length();
-            while (++start < end && s.charAt(start) > ' ') {
-            }
-        }
-        return start;
-    }
-
-
-    /**
      * Returns the number of white-space delimited fields in the specified
-     * string.  A field is one or more consecutive characters that are not
+     * string.  A field is a maximal set of consecutive characters that are not
      * white space characters.  White space is defined as any unicode
      * characters less than or equal to '&#92;u0020'.
      *
-     * @param s a string.
+     * @param s a string
      * @return the number of white-space delimited fields in the specified
-     * string.
-     * @throws NullPointerException if {@code s==null}.
+     * string
+     * @throws NullPointerException if {@code s == null}
      */
     public static int countFields(String s) {
         int start = 0;
@@ -220,24 +171,23 @@ public class StringUtil {
     }
 
     /**
-     * Returns an array obtained by splitting the specified string around
-     * white space. A white space delimiter
-     * is any substring of white-space characters (i.e. unicode characters
-     * less than or equal to '&#92;u0020' that is preceded and followed by a
-     * non-white-space character. White-space characters at the beginning and
-     * end of the string are ignored.  The substrings in the returned array
-     * are in the order in which they occur in this string.  If there are no
-     * white-space characters in the specified string, the method
-     * returns an array of length one whose single element is the specified
-     * string. If the specified string contains only white-space characters,
-     * a string array of length 0 is returned.
+     * Returns an array obtained by trimming white-space from the
+     * beginning and end of the specified string, and splitting the resulting
+     * string around white space.
+     * White space is any maximal substring of unicode characters
+     * less than or equal to '&#92;u0020'. White-space at the beginning and
+     * end of the string is ignored.  The substrings in the returned array
+     * are in the order in which they occur in this string.  If there is no
+     * white-space in the specified string, the method returns an array
+     * of length one whose single element is the trimmed string.  If the
+     * specified string contains only white-space a string array
+     * of length 0 is returned.
      *
-     * @param s a string to split around white space.
-     *
+     * @param s a string
      * @return the array of strings obtained by splitting the specified string
-     * around white space.
+     * around white space
      *
-     * @throws NullPointerException if {@code s==null}.
+     * @throws NullPointerException if {@code s == null}
      */
     public static String[] getFields(String s) {
         s = s.trim();
@@ -264,32 +214,28 @@ public class StringUtil {
     }
 
     /**
-     * <p>Returns an array obtained by splitting the specified string around the
-     * first {@code (limit-1)} white space delimiters. A white space delimiter
-     * is any substring of white-space characters (i.e. unicode characters
-     * less than or equal to '&#92;u0020') that is preceded and followed by
-     * a non-white-space character. White-space characters at the beginning and
-     * end of the string are ignored.  The substrings in the returned array are
-     * in the order in which they occur in this string. If there are no
-     * white-space characters in the specified string, the method
-     * returns an array of length one whose single element is the specified
-     * string. If the specified string contains only white-space characters,
+     * <p>Returns an array obtained by trimming white-space from the
+     * beginning and end of the specified string, and splitting the resulting
+     * string around the first {@code (limit-1)} white-space delimiters.
+     * A white-space delimiter is any maximal substring of unicode characters
+     * less than or equal to '&#92;u0020'.  If the trimemed string contains
+     * fewer than {@code (limit - 1)} white space delimiters, the returned value
+     * will equal {@code StringUtil.getFields(s)}.  The substrings in the
+     * returned array are in the order in which they occur in this string.
+     * If there are no white-space delimiters in the specified string, the
+     * method returns an array of length one whose single element is the
+     * trimmed string. If the specified string contains only white-space,
      * a string array of length 0 is returned.
      *</p>
-     * The specified limit controls the maximum length of the returned
-     * array.  If there are more than {@code limit} white-space delimited
-     * substrings in the specified string, then the returned array's last entry
-     * will contain the substring that begins with the
-     * {@code (limit-1)}-th white-space delimited substring.
      *
-     * @param s a string to split around white space.
-     * @param limit the maximum length of the returned array.
+     * @param s a string
+     * @param limit the maximum length of the returned array
      *
      * @return the array of strings obtained by splitting the specified string
-     * around white space.
+     * around white space
      *
-     * @throws NullPointerException if {@code s==null}.
-     * @throws IllegalArgumentException if {@code limit<2}.
+     * @throws NullPointerException if {@code s == null}
+     * @throws IllegalArgumentException if {@code limit < 2}
      */
     public static String[] getFields(String s, int limit) {
         if (limit<2) {

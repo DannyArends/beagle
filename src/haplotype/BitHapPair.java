@@ -18,6 +18,7 @@
  */
 package haplotype;
 
+import beagleutil.Samples;
 import blbutil.Const;
 import java.util.BitSet;
 import vcf.Marker;
@@ -25,6 +26,7 @@ import vcf.Markers;
 
 /**
  * <p>Class {@code BitHapPair} represents a pair of haplotypes for a sample.
+ * The class stores alleles using {@code java.util.BitSet} objects.
  * </p>
  * Instances of class {@code BitHapPair} are immutable.
  *
@@ -32,62 +34,56 @@ import vcf.Markers;
  */
 public final class BitHapPair implements HapPair {
 
-    private final int idIndex;
     private final Markers markers;
+    private final Samples samples;
+    private final int sampleIndex;
     private final BitSet alleles1;
     private final BitSet alleles2;
 
     /**
-     * Constructs a {@code BitHapPair} instance.
-     * @param markers the sequence of markers.
-     * @param idIndex the sample identifier index.
-     * @param alleles1 the sequence of allele indices for the first haplotype.
-     * @param alleles2 the sequence of alleles indices for the second haplotype.
+     * Constructs a new {@code BitHapPair} instance.
+     * @param markers the sequence of markers
+     * @param samples the list of samples
+     * @param sampleIndex the sample index
+     * @param alleles1 the sequence of allele indices for the first haplotype
+     * @param alleles2 the sequence of alleles indices for the second haplotype
      *
      * @throws IllegalArgumentException if
      * {@code alleles1.length != markers.nMarkers()
-     * || alleles2.length != markers.nMarkers()}.
-     * @throws IllegalArgumentException if {@code alleles1[k]<0 ||
-     * allele1[k]>=markers.marker(k).nAlleles()} for some
-     * {@code 0<=k && k<markers.nMarkers()}.
-     * @throws IllegalArgumentException if {@code alleles2[k]<0 ||
-     * allele2[k]>=markers.marker(k).nAlleles()} for some
-     * {@code 0<=k && k<markers.nMarkers()}.
+     * || alleles2.length != markers.nMarkers()}
+     * @throws IllegalArgumentException if {@code alleles1[k] < 0 ||
+     * allele1[k] >= markers.marker(k).nAlleles()} for some {@code k} satisfying
+     * {@code 0 <= k && k < markers.nMarkers()}
+     * @throws IllegalArgumentException if {@code alleles2[k] < 0 ||
+     * allele2[k] >= markers.marker(k).nAlleles()} for some {@code k} satisfying
+     * {@code 0 <= k && k < markers.nMarkers()}
+     * @throws IndexOutOfBoundsException if
+     * {@code sampleIndex < 0 || sampleIndex >= samples.nSamples()}
      * @throws NullPointerException if
-     * {@code marker==null || alleles1==null || allele2==null}.
+     * {@code marker == null || samples == null || alleles1 == null
+     * || allele2 == null}
      */
-    public BitHapPair(Markers markers, int idIndex,
-            byte[] alleles1, byte[] alleles2) {
-        if (alleles1.length != markers.nMarkers()) {
-            String s = "alleles1.length=" + alleles1.length
-                    + " != markers.nMarkers()=" + markers.nMarkers();
-            throw new IllegalArgumentException(s);
+    public BitHapPair(Markers markers, Samples samples, int sampleIndex,
+            int[] alleles1, int[] alleles2) {
+        if (alleles1.length != markers.nMarkers()
+                || alleles2.length != markers.nMarkers()) {
+            throw new IllegalArgumentException("inconsistent markers");
         }
-        if (alleles2.length != markers.nMarkers()) {
-            String s = "alleles2.length=" + alleles2.length
-                    + " != markers.nMarkers()=" + markers.nMarkers();
-            throw new IllegalArgumentException(s);
+        if (sampleIndex < 0 || sampleIndex >= samples.nSamples()) {
+            throw new IndexOutOfBoundsException(String.valueOf(sampleIndex));
         }
         this.markers = markers;
-        this.idIndex = idIndex;
+        this.samples = samples;
+        this.sampleIndex = sampleIndex;
         this.alleles1 = toBitSet(markers, alleles1);
         this.alleles2 = toBitSet(markers, alleles2);
-
     }
 
-    private BitHapPair(Markers markers, int idIndex,
-            BitSet alleles1, BitSet alleles2) {
-        this.markers = markers;
-        this.idIndex = idIndex;
-        this.alleles1 = alleles1;
-        this.alleles2 = alleles2;
-    }
-
-    private static BitSet toBitSet(Markers markers, byte[] alleles) {
+    private static BitSet toBitSet(Markers markers, int[] alleles) {
         int index = 0;
         BitSet bs = new BitSet(markers.sumHaplotypeBits());
         for (int k=0; k<alleles.length; ++k) {
-            byte allele = alleles[k];
+            int allele = alleles[k];
             if (allele < 0 || allele >= markers.marker(k).nAlleles()) {
                 String s = "allele \"" + allele + "\" out of bounds for marker: "
                         + markers.marker(k);
@@ -105,23 +101,23 @@ public final class BitHapPair implements HapPair {
     }
 
     @Override
-    public byte allele1(int marker) {
+    public int allele1(int marker) {
         return allele(alleles1, marker);
     }
 
     @Override
-    public byte allele2(int marker) {
+    public int allele2(int marker) {
         return allele(alleles2, marker);
     }
 
-    private byte allele(BitSet bitset, int marker) {
+    private int allele(BitSet bitset, int marker) {
         int start = markers.sumHaplotypeBits(marker);
         int end = markers.sumHaplotypeBits(marker+1);
         if (end==(start+1)) {
-            return bitset.get(start) ? (byte) 1 : (byte) 0;
+            return bitset.get(start) ? 1 : 0;
         }
-        byte allele = 0;
-        byte mask = 1;
+        int allele = 0;
+        int mask = 1;
         for (int j=start; j<end; ++j) {
             if (bitset.get(j)) {
                 allele += mask;
@@ -147,21 +143,26 @@ public final class BitHapPair implements HapPair {
     }
 
     @Override
-    public int idIndex() {
-        return idIndex;
+    public Samples samples() {
+        return samples;
+    }
+
+    @Override
+    public int sampleIndex() {
+        return sampleIndex;
     }
 
     /**
      * Returns a string representation of {@code this}.  The
      * exact details of the representation are unspecified and subject
      * to change.
-     * @return a string representation of {@code this}.
+     * @return a string representation of {@code this}
      */
     @Override
     public String toString() {
         StringBuilder sb = new StringBuilder();
-        sb.append("sampleIdIndex=");
-        sb.append(idIndex);
+        sb.append("sampleIndex=");
+        sb.append(sampleIndex);
         sb.append(Const.nl);
         sb.append(alleles1);
         sb.append(Const.nl);

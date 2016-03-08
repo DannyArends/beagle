@@ -41,6 +41,8 @@ import vcf.GL;
  * The Refined IBD algorithm detects candidate haplotype IBD segments with the
  * Germline Algorithm and then evaluates candidate IBD segments using a
  * likelihood ratio test.
+ * </p>
+ * <p>Instances of class {@code HaploidIbd} are immutable.
  *</p>
  * Reference: Gusev A, Lowe JK, Stoffel M, Daly MJ, Altshuler D, Breslow JL,
  *      Friedman JM, Pe'er I.  Whole population, genomewide mapping
@@ -48,7 +50,7 @@ import vcf.GL;
  *
  * @author Brian L. Browning {@code <browning@uw.edu>}
  */
-public class HaploidIbd {
+public final class HaploidIbd {
 
     private final int ibdTrim;
     private final float minIbdLod;
@@ -56,20 +58,20 @@ public class HaploidIbd {
     private final float minFreqLod;     // for shared haplotype
 
     /**
-     * Constructs a new {@code HaploidIbd} instance.
+     * Constructs a new {@code HaploidIbd} instance from the specified data.
      * @param ibdTrim the number of markers to trim from an IBS segment
-     * when computing a IBD vs. non-IBD likelihood ratio.
+     * when computing the IBD versus non-IBD likelihood ratio
      * @param minIbdLod the minimum IBD LOD score of reported IBD segments
      *
-     * @throws IllegalArgumentException if {@code ibdTrim<0}
+     * @throws IllegalArgumentException if {@code ibdTrim < 0 }
      * @throws IllegalArgumentException if
-     * {@code ibdLod<=0.0f || Float.isNaN(ibdLod)==true}
+     * {@code ibdLod <= 0.0f || Float.isFinite(ibdLod) == false}
      */
     public HaploidIbd(int ibdTrim, float minIbdLod) {
         if (ibdTrim < 0) {
             throw new IllegalArgumentException("trim: " + ibdTrim);
         }
-        if (minIbdLod <= 0.0 || Float.isNaN(minIbdLod)) {
+        if (minIbdLod <= 0.0 || Float.isFinite(minIbdLod) == false) {
             throw new IllegalArgumentException("minIbdlod: " + minIbdLod);
         }
         this.ibdTrim = ibdTrim;
@@ -79,23 +81,25 @@ public class HaploidIbd {
     }
 
     /**
-     * Runs the Refined IBD algorithm, and returns the detected IBD segments.
+     * Runs the Refined IBD algorithm, and returns a map whose keys are
+     * ordered pairs of haplotype indices and whose values are thread-safe
+     * lists of IBD segments for each haplotype pair. The minimum haplotype
+     * index is listed first in each ordered pair of haplotype indices.
      *
-     * @param gl the HMM emission probabilities.
-     * @param dag the HMM transition probabilities.
-     * @param haps the sample haplotype pairs.
-     * @param nThreads the number of threads of execution that may be used.
-     * @return a map whose keys are pairs of haplotype indices and whose
-     * values are thread-safe lists of IBD segments for the haplotype pairs.
+     * @param gl the HMM emission probabilities
+     * @param dag the HMM transition probabilities
+     * @param haps the sample haplotype pairs
+     * @param nThreads the number of threads of execution that may be used
+     * @return the detected IBD segments
      *
-     * @throws IllegalArgumentException if {@code nThreads<1}
+     * @throws IllegalArgumentException if {@code nThreads < 1}
      * @throws IllegalArgumentException if
-     * {@code gl.samples().equals(haps.samples())==false}
+     * {@code gl.samples().equals(haps.samples()) == false}
      * @throws IllegalArgumentException if
-     * {@code gl.markers().equals(dag.markers())==false
-                || gl.markers().equals(haps.markers())==false}
+     * {@code gl.markers().equals(dag.markers()) == false
+                || gl.markers().equals(haps.markers()) == false}
      * @throws NullPointerException if
-     * {@code gl==null || dag==null || haps==null}
+     * {@code gl == null || dag == null || haps == null}
      */
     @SuppressWarnings({"BroadCatchBlock", "TooBroadCatch"})
     public Map<IntPair, List<IbdSegment>> run(GL gl, Dag dag,
@@ -124,7 +128,7 @@ public class HaploidIbd {
             es.awaitTermination(Long.MAX_VALUE, TimeUnit.DAYS);
         }
         catch (Throwable e) {
-            Utilities.exit("\"HapSampler: ERROR\"", e);
+            Utilities.exit("ERROR", e);
         }
         return ibdMap;
     }
@@ -147,7 +151,7 @@ public class HaploidIbd {
             return 0.0f;
         }
         else {
-            return IbdBaum.freqLod(hap, trimmedStart, trimmedEnd, dag, haps);
+            return IbdBaum.freqLod(hap, trimmedStart, trimmedEnd, haps, dag);
         }
     }
 
@@ -177,24 +181,6 @@ public class HaploidIbd {
         private final int ibdTrim;
         private final float minIbdLod;
 
-        /**
-         * Constructs a {@code ProduceIbd} instance.
-         *
-         * @param haps the haplotypes.
-         * @param baum a thread-confined instance of class {@code ibd.IbdBaum}.
-         * @param qIn a thread-safe input work queue.
-         * @param ibdMap a thread-safe map whose keys are pairs of haplotype
-         * indices, and whose values are thread-safe lists of IBD segments
-         * for the haplotype pairs.
-         * @param ibdTrim the number of markers to trim from an IBS segment
-         * when computing an IBD vs. non-IBD likelihood ratio.
-         * @param minIbdLod the minimum IBD LOD score of reported IBD segments.
-         *
-         * @throws IllegalArgumentException if {@code ibdTrim<0}
-         * @throws IllegalArgumentException if
-         * {@code minIbdLod<=0.0 || Float.isNan(isIbdLod)}
-         * @throws NullPointerException if any parameter is {@code null}
-         */
         public ProduceIbd(SampleHapPairs haps, IbdBaum baum,
                 IbsHapSegments ibsHapSegments, BlockingQueue<Integer> qIn,
                 ConcurrentMap<IntPair, List<IbdSegment>> ibdMap, int ibdTrim,
@@ -214,10 +200,10 @@ public class HaploidIbd {
             this.minIbdLod = minIbdLod;
         }
 
-        /**
+        /*
          * Takes haplotype indices from a thread-safe work-queue and stores
          * detected IBD segments that between the haplotype and
-         * haplotypes with large index in {@code this.ibdMap}.  The method
+         * haplotypes with larger index in {@code this.ibdMap}.  The method
          * exits when {@code ProduceSingleSamples.POISON} is taken from the
          * work queue.
          *

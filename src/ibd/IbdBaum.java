@@ -30,8 +30,11 @@ import vcf.GL;
 import vcf.HbdAL;
 
 /**
- * Class {@code IbdBaum} estimates LOD scores for an IBD versus a non-IBD
+ * <p>Class {@code IbdBaum} estimates LOD scores for an IBD versus a non-IBD
  * model, and it estimates LOD scores for an HBD versus a non-HBD model.
+ * </p>
+ * <p>Instances of class {@code IbdBaum} are immutable.
+ * </p>
  *
  * @author Brian L. Browning {@code <browning@uw.edu>}
  */
@@ -52,15 +55,15 @@ public class IbdBaum {
     private final DuoBaumLevel scratchDuoLevel;
 
     /**
-     * Creates a new {@code IbdBaum} instance.
+     * Creates a new {@code IbdBaum} instance from the specified data.
      *
      * @param dag the directed acyclic graph that determines the
-     * transition probabilities.
-     * @param gl the emission probabilities.
+     * transition probabilities
+     * @param gl the HMM emission probabilities
      *
      * @throws IllegalArgumentException
-     * if {@code dag.markers().equals(gl.markers())==false}
-     * @throws NullPointerException if {@code dag==null || gl==null}
+     * if {@code dag.markers().equals(gl.markers()) == false}
+     * @throws NullPointerException if {@code dag == null || gl == null}
      */
     public IbdBaum(Dag dag, GL gl) {
         if (dag.markers().equals(gl.markers())==false) {
@@ -68,7 +71,7 @@ public class IbdBaum {
         }
         this.dag = dag;
         this.gl = gl;
-        this.nMarkers = dag.nMarkers();
+        this.nMarkers = dag.nLevels();
 
         this.fwdNodesHbd = new HapNodes();
         this.fwdNodesA = new SingleNodes();
@@ -84,15 +87,15 @@ public class IbdBaum {
      * Returns the directed acyclic graph that determines the transition
      * probabilities.
      * @return the directed acyclic graph that determines the transition
-     * probabilities.
+     * probabilities
      */
     public Dag dag() {
         return dag;
     }
 
     /**
-     * Returns the emission probabilities.
-     * @return the emission probabilities.
+     * Returns the HMM emission probabilities.
+     * @return the HMM emission probabilities
      */
     public GL gl() {
         return gl;
@@ -100,14 +103,14 @@ public class IbdBaum {
 
     /**
      * Returns the homozygosity-by-descent (HBD) LOD score.
-     * @param sample the sample index.
-     * @param start the start marker index (inclusive).
-     * @param end the end marker index (exclusive).
-     * @return the HBD LOD score.
+     * @param sample the sample index
+     * @param start the start marker index (inclusive)
+     * @param end the end marker index (exclusive)
+     * @return the HBD LOD score
      * @throws IndexOutOfBoundsException if
-     * {@code sample<0 || sample>=this.gl().nSamples()}.
+     * {@code sample < 0 || sample >= this.gl().nSamples()}
      * @throws IndexOutOfBoundsException if
-     * {@code start<0 || start>end || end>this.dag.nMarkers()}.
+     * {@code start < 0 || start > end || end > this.dag.nMarkers()}
      */
     public double hbdLod(int sample, int start, int end) {
         checkStartAndEnd(start, end, nMarkers);
@@ -125,17 +128,17 @@ public class IbdBaum {
 
     /**
      * Returns the identity-by-descent (IBD) LOD score.
-     * @param sampleA the first sample index.
-     * @param sampleB the second sample index.
-     * @param start the start marker index (inclusive).
-     * @param end the end marker index (exclusive).
-     * @return the IBD LOD score.
+     * @param sampleA the first sample index
+     * @param sampleB the second sample index
+     * @param start the start marker index (inclusive)
+     * @param end the end marker index (exclusive)
+     * @return the IBD LOD score
      * @throws IndexOutOfBoundsException if
-     * {@code sampleA<0 || sampleA>=this.gl().nSamples()}
+     * {@code sampleA < 0 || sampleA >= this.gl().nSamples()}
      * @throws IndexOutOfBoundsException if
-     * {@code sampleB<0 || sampleB>=this.gl().nSamples()}
+     * {@code sampleB < 0 || sampleB >= this.gl().nSamples()}
      * @throws IndexOutOfBoundsException if
-     * {@code start<0 || start>end || end>this.dag.nMarkers()}.
+     * {@code start < 0 || start > end || end > this.dag.nMarkers()}
      */
     public double ibdLod(int sampleA, int sampleB, int start, int end) {
         checkStartAndEnd(start, end, nMarkers);
@@ -169,7 +172,7 @@ public class IbdBaum {
         nodes.clear();
         int nNodes = dag.nParentNodes(marker);
         for (int node=0; node<nNodes; ++node) {
-            float p = dag.nodeProb(marker, node);
+            float p = dag.parentProb(marker, node);
             nodes.sumUpdate(node, p);
         }
     }
@@ -178,9 +181,9 @@ public class IbdBaum {
         nodes.clear();
         int n = dag.nParentNodes(marker);
         for (int n1=0; n1<n; ++n1) {
-            float p1 = dag.nodeProb(marker, n1);
+            float p1 = dag.parentProb(marker, n1);
             for (int n2=0; n2<n; ++n2) {
-                float p2 = dag.nodeProb(marker, n2);
+                float p2 = dag.parentProb(marker, n2);
                 nodes.sumUpdate(n1, n2, (p1*p2));
             }
         }
@@ -190,11 +193,11 @@ public class IbdBaum {
         nodes.clear();
         int n = dag.nParentNodes(marker);
         for (int n1=0; n1<n; ++n1) {
-            float p1 = dag.nodeProb(marker, n1);
+            float p1 = dag.parentProb(marker, n1);
             for (int n2=0; n2<n; ++n2) {
-                float p2 = dag.nodeProb(marker, n2);
+                float p2 = dag.parentProb(marker, n2);
                 for (int n3=0; n3<n; ++n3) {
-                    float p3 = dag.nodeProb(marker, n3);
+                    float p3 = dag.parentProb(marker, n3);
                     nodes.sumUpdate(n1, n2, n3, (p1*p2*p3));
                 }
             }
@@ -245,32 +248,32 @@ public class IbdBaum {
     /**
      * Returns the estimated frequency of the haplotype segment on the LOD
      * {@code (-Math.log10)} scale.
-     * @param hap a haplotype index.
-     * @param start the start marker index (inclusive).
-     * @param end the end marker index (exclusive).
-     * @param haps the list of haplotype pairs.
-     * @param dag the directed acyclic graph that determines the Markov model
-     * transition probabilities.
+     * @param hap a haplotype index
+     * @param start the start marker index (inclusive)
+     * @param end the end marker index (exclusive)
+     * @param hapPairs the list of haplotype pairs
+     * @param dag the directed acyclic graph that determines the HMM
+     * transition probabilities
      * @return the estimated frequency of the haplotype segment on the LOD
-     * {@code (-Math.log10)} scale.
+     * {@code (-Math.log10)} scale
      * @throws IndexOutOfBoundsException if
-     * {@code hap<0 || hap>=haps.nHaps()}
+     * {@code hap < 0 || hap >= haps.nHaps()}
      * @throws IndexOutOfBoundsException if
-     * {@code start<0 || start>end || end>dag.nMarkers()}.
-     * @throws NullPointerException if {@code dag==null || haps==null}.
+     * {@code start < 0 || start > end || end > dag.nMarkers()}
+     * @throws NullPointerException if {@code dag == null || haps == null}
      */
-    public static double freqLod(int hap, int start, int end, Dag dag,
-            HapPairs haps) {
+    public static double freqLod(int hap, int start, int end, HapPairs hapPairs,
+            Dag dag) {
         double minSumProbs = 1e-100;
-        checkStartAndEnd(start, end, dag.nMarkers());
+        checkStartAndEnd(start, end, dag.nLevels());
         double sumProbs = 0.0;
         for (int node=0, n=dag.nParentNodes(start); node<n; ++node) {
             int lastNode = node;
-            double p = dag.nodeProb(start, node);
+            double p = dag.parentProb(start, node);
             for (int m=start; m<end && p>0.0; ++m) {
-                byte allele = haps.allele(m, hap);
+                int allele = hapPairs.allele(m, hap);
                 int e = dag.outEdgeBySymbol(m, lastNode, allele);
-                if (e == Character.MAX_VALUE) {
+                if (e == -1) {
                     p = 0.0;
                     break;
                 }

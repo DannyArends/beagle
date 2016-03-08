@@ -19,124 +19,97 @@
 package haplotype;
 
 import beagleutil.Samples;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import vcf.Marker;
 import vcf.Markers;
 
 /**
- * <p>Class {@code SampleHaps} stores a list of samples and a
+ * <p>Class {@code BasicSampleHapPairs} stores a list of samples and a
  * haplotype pair for each sample.
  * </p>
- * Class {@code SampleHaps} is immutable.
+ * <p>Instance of class {@code BasicSampleHapPairs} are immutable.
+ * </p>
  *
  * @author Brian L. Browning {@code <browning@uw.edu>}
  */
 public final class BasicSampleHapPairs implements SampleHapPairs {
 
-    private final Samples samples;
     private final Markers markers;
+    private final Samples samples;
     private final HapPair[] hapPairs;
-    private final boolean reverseMarkers;
-    private final int lastMarker;
 
     /**
-     * Constructs a {@code SimpleSampleHapPairs} instance corresponding to
-     * the specified data.
-     * @param samples a list of samples.
+     * Constructs a new {@code BasicSampleHapPairs} instance.
+     * @param samples a list of samples
      * @param hapPairList a list of haplotype pairs corresponding to the
-     * specified list of samples.
+     * specified list of samples
      *
      * @throws IllegalArgumentException if
-     * {@code hapPairList.isEmpty()==true}.
+     * {@code hapPairList.isEmpty() == true}
      * @throws IllegalArgumentException if
-     * {@code hapPairList.get(j).markers()!=hapPairList.get(k).markers()}
-     * for any {@code <= j && j<k && k<hapPairList.size}.
-     * @throws IllegalArgumentException if
-     * {@code samples.idIndex(j)!=hapPairList.get(j).idIndex()}
-     * for some {@code 0<=j && j<hapPairList.size()}.
+     * {@code hapPairList.get(j).markers().equals(hapPairList.get(k).markers())
+     * == false}
+     * for any indices {@code j, k} satisfying
+     * {@code 0 <= j && j < k && k < hapPairList.size()}
+     * @throws IllegalArgumentException if the list of samples does not
+     * match the list of samples determined by {@code hapPairList}
+     * @throws NullPointerException if {@code samples == null}
      * @throws NullPointerException if
-     * {@code sample==null || hapPairList==null},
-     * or if any element of {@code hapPairList} is null.
-     * @see beagleutil.SampleIds
+     * {@code (hapPairList == null || hapPairList(j) == null)}
+     * for any {@code j} satisfying {@code (0 <= j && j < hapPairList.size())}
      */
     public BasicSampleHapPairs(Samples samples, List<HapPair> hapPairList) {
-        this(samples, hapPairList, false);
-    }
-
-    /**
-     * Constructs a {@code SimpleSampleHapPairs} instance corresponding to
-     * the specified data.
-     * @param samples a list of samples.
-     * @param hapPairList a list of haplotype pairs corresponding to the
-     * specified list of samples.
-     * @param reverseMarkers {@code true} if the marker order of the
-     * specified haplotype pairs will be reversed, and {@code false}
-     * otherwise.
-     *
-     * @throws IllegalArgumentException if
-     * {@code hapPairList.isEmpty()==true}.
-     * @throws IllegalArgumentException if
-     * {@code hapPairList.get(j).markers().equals(hapPairList.get(k).markers())==false}
-     * for any {@code 0<=j && j<k && k<hapPairList.size}.
-     * @throws IllegalArgumentException if
-     * {@code samples.idIndex(j)!=hapPairList.get(j).idIndex()}
-     * for some {@code 0<=j && j<hapPairList.size()}.
-     * @throws NullPointerException if
-     * {@code samples==null || hapPairList==null},
-     * or if any element of {@code hapPairList} is null.
-     * @see beagleutil.SampleIds
-     */
-    public BasicSampleHapPairs(Samples samples, List<HapPair> hapPairList,
-            boolean reverseMarkers) {
         if (hapPairList.isEmpty()) {
             throw new IllegalArgumentException("haps.isEmpy()==true");
         }
+        Collections.sort(hapPairList, hapsComparator(samples));
         checkSamples(samples, hapPairList);
-        Markers mkrs = BasicSampleHapPairs.checkAndExtractMarkers(hapPairList);
+        this.markers = checkAndExtractMarkers(hapPairList);
         this.samples = samples;
-        this.markers = (reverseMarkers ? mkrs.reverse() : mkrs);
         this.hapPairs = hapPairList.toArray(new HapPair[0]);
-        this.reverseMarkers = reverseMarkers;
-        this.lastMarker = markers.nMarkers() - 1;
     }
 
-    private void checkSamples(Samples samples,
-            List<HapPair> hapPairList) {
-        if (samples.nSamples()!= hapPairList.size()) {
-            String s = "samples and hapPairList are inconsistent";
-            throw new IllegalArgumentException(s);
+    private void checkSamples(Samples samples, List<HapPair> hapPairs) {
+        if (samples.nSamples()!= hapPairs.size()) {
+            throw new IllegalArgumentException("inconsistent samples");
         }
-        for (int j=0, n=samples.nSamples(); j<n; ++j) {
-            if (samples.idIndex(j)!=hapPairList.get(j).idIndex()) {
-                String s = "samples and hapPairList are inconsistent";
-                throw new IllegalArgumentException(s);
+        for (int j=0, n=hapPairs.size(); j<n; ++j) {
+            if (samples.equals(hapPairs.get(j).samples())==false) {
+                HapPair hp = hapPairs.get(j);
+                int i1 = samples.idIndex(j);
+                int i2 = hp.samples().idIndex(hp.sampleIndex());
+                if (i1 != i2) {
+                    throw new IllegalArgumentException("inconsistent samples");
+                }
             }
         }
     }
 
     /**
-     * Checks that all haplotype pairs have the same markers reference
-     * and returns the shared markers.
-     * @param hapPairList a list of haplotype pairs.
-     * @return the markers shared by all the specified haplotype pairs.
+     * Checks that all haplotype pairs have alleles for the same list of
+     * markers, and returns the list of markers.
+     * @param hapPairList a list of haplotype pairs
+     * @return the list of markers shared by the specified haplotype pairs
      * @throws IllegalArgumentException if
-     * {@code haps.get(j).markers().equals(haps.get(k).markers())==false}
-     * for any {@code 0<=j && j<k && k<haps.size()}.
-     * @throws NullPointerException if {@code hapPairList==null},
-     * or if any element of {@code hapPairList} is null.
+     * {@code hapPiarList.get(j).markers().equals(hapPairList.get(k).markers())
+     * == false}
+     * for any indices {@code j, k} satisfying
+     * {@code 0 <= j && j < k && k < hapPairList.size()}
+     * @throws NullPointerException if
+     * {@code hapPairList == null || hapPairList(j) == null}
+     * for any {@code j} satisfying {@code 0 <= j && j < hapPairList.size()}
      */
-    public static Markers checkAndExtractMarkers(
-            List<HapPair> hapPairList) {
+    static Markers checkAndExtractMarkers(List<HapPair> hapPairList) {
         if (hapPairList.isEmpty()) {
-            return new Markers(new Marker[0]);
+            return Markers.create(new Marker[0]);
         }
         else {
             Markers m = hapPairList.get(0).markers();
             for (int j=1, n=hapPairList.size(); j<n; ++j) {
                 if (hapPairList.get(j).markers().equals(m)==false) {
-                    String s = "Markers are not consistent";
-                    throw new IllegalArgumentException(s);
+                    throw new IllegalArgumentException("inconsistent markers");
                 }
             }
             return m;
@@ -144,26 +117,17 @@ public final class BasicSampleHapPairs implements SampleHapPairs {
     }
 
     @Override
-    public byte allele1(int marker, int hapPair) {
-        if (reverseMarkers) {
-            marker = lastMarker - marker;
-        }
+    public int allele1(int marker, int hapPair) {
         return hapPairs[hapPair].allele1(marker);
     }
 
     @Override
-    public byte allele2(int marker, int hapPair) {
-        if (reverseMarkers) {
-            marker = lastMarker - marker;
-        }
+    public int allele2(int marker, int hapPair) {
         return hapPairs[hapPair].allele2(marker);
     }
 
     @Override
-    public byte allele(int marker, int haplotype) {
-        if (reverseMarkers) {
-            marker = lastMarker - marker;
-        }
+    public int allele(int marker, int haplotype) {
         int pairIndex = haplotype/2;
         if ((haplotype & 1)==0) {
             return hapPairs[pairIndex].allele1(marker);
@@ -209,33 +173,47 @@ public final class BasicSampleHapPairs implements SampleHapPairs {
     }
 
     @Override
-    public int idIndex(int hapPair) {
-        return hapPairs[hapPair].idIndex();
+    public Samples samples(int hapPair) {
+        if (hapPair < 0 || hapPair >= hapPairs.length) {
+            throw new IndexOutOfBoundsException(String.valueOf(hapPair));
+        }
+        return samples;
     }
 
-    /**
-     * Returns a {@code Comparator<HapPairInterface>}
-     * whose {@code compare(hp1, hp2)} method returns -1, 0, or 1
-     * depending on whether {@code hp1.idIndex()} is less than, equal,
-     * or greater than {@code hp2.idIndex()}.
-     * @return a {@code Comparator<HapPairInterface>}
-     * whose {@code compare(hp1, hp2)} method compares two
-     * haplotype pairs for order.
-     */
-    public static Comparator<HapPair> hapsComparator() {
-        return new Comparator<HapPair>() {
-            @Override
-            public int compare(HapPair hp1, HapPair hp2) {
-                int i1 = hp1.idIndex();
-                int i2 = hp2.idIndex();
-                if (i1==i2) {
-                    return 0;
-                }
-                else {
-                    return (i1 < i2) ? -1 : 1;
-                }
-            }
-        } ;
+    @Override
+    public int sampleIndex(int hapPair) {
+        if (hapPair < 0 || hapPair >= hapPairs.length) {
+            throw new IndexOutOfBoundsException(String.valueOf(hapPair));
+        }
+        return hapPair;
+    }
+
+    @Override
+    public int nAlleles(int marker) {
+        return markers.marker(marker).nAlleles();
+    }
+
+    @Override
+    public boolean storesNonMajorIndices(int marker) {
+        return false;
+    }
+
+    @Override
+    public int majorAllele(int marker) {
+        String s = "this.storesNonMajorIndices(marker)==false";
+        throw new UnsupportedOperationException(s);
+    }
+
+    @Override
+    public int alleleCount(int marker, int allele) {
+        String s = "this.storesNonMajorIndices(marker)==false";
+        throw new UnsupportedOperationException(s);
+    }
+
+    @Override
+    public int hapIndex(int marker, int allele, int copy) {
+        String s = "this.storesNonMajorIndices(marker)==false";
+        throw new UnsupportedOperationException(s);
     }
 
     /**
@@ -245,29 +223,37 @@ public final class BasicSampleHapPairs implements SampleHapPairs {
      * less than, equal, or greater than
      * {@code samples.index(hp2.idIndex())}.
      * @param samples the list of samples used to compare {@code HapsPair}
-     * objects.
+     * objects
      * @return a {@code Comparator<HapPairInterface>}
      * whose {@code compare(hp1, hp2)} method compares two
-     * haplotype pairs for order.
-     * @throws NullPointerException if {@code samples==null}.
-     * @see beagleutil.SampleIds
+     * haplotype pairs for order
+     * @throws NullPointerException if {@code samples == null}
      */
-    public static Comparator<HapPair> hapsComparator(
-            final Samples samples) {
+    private static Comparator<HapPair> hapsComparator(final Samples samples) {
         if (samples==null) {
             throw new NullPointerException("samples==null");
         }
-        return new Comparator<HapPair>() {
-            @Override
-            public int compare(HapPair hp1, HapPair hp2) {
-                int i1 = samples.index(hp1.idIndex());
-                int i2 = samples.index(hp2.idIndex());
-                if (i1==i2) {
-                    return 0;
+        return (HapPair hp1, HapPair hp2) -> {
+            int id1 = hp1.samples().idIndex(hp1.sampleIndex());
+            int id2 = hp2.samples().idIndex(hp2.sampleIndex());
+            int i1 = samples.index(id1);
+            int i2 = samples.index(id2);
+            if (i1 == -1 || i2 == -1) {
+                String id;
+                if (i1 == -1) {
+                    id = hp1.samples().id(hp1.sampleIndex());
                 }
                 else {
-                    return (i1 < i2) ? -1 : 1;
+                    id = hp2.samples().id(hp2.sampleIndex());
                 }
+                String s = "samples do not contain: " + id;
+                throw new IllegalArgumentException(s);
+            }
+            if (i1==i2) {
+                return 0;
+            }
+            else {
+                return (i1 < i2) ? -1 : 1;
             }
         } ;
     }

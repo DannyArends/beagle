@@ -49,13 +49,21 @@ public final class HbdAL implements AL {
     }
 
     @Override
-    public float al(int marker, int haplotype, byte allele) {
+    public float al(int marker, int haplotype, int allele) {
         if (allele<0 || allele >= gl.marker(marker).nAlleles()) {
             String s = "marker=" + marker + " allele: " + allele;
             throw new IllegalArgumentException(s);
         }
         int sample = haplotype/2;
         return gl.gl(marker, sample, allele, allele);
+    }
+
+    @Override
+    public int allele(int marker, int haplotype) {
+        int sample = haplotype/2;
+        int a1 = gl.allele1(marker, sample);
+        int a2 = gl.allele2(marker, sample);
+        return (a1!=a2) ? -1 : a1;
     }
 
     @Override
@@ -84,12 +92,22 @@ public final class HbdAL implements AL {
     }
 
     @Override
+    public int nHaps() {
+        return 2*gl.nSamples();
+    }
+
+    @Override
+    public float errProb() {
+        return 0f;
+    }
+
+    @Override
     public String toString() {
         StringBuilder sb  = new StringBuilder();
         sb.append("[HbdGL: nMarkers=");
         sb.append(nMarkers());
-        sb.append(" nSamples=");
-        sb.append(nSamples());
+        sb.append(" nHaps=");
+        sb.append(nHaps());
         sb.append(Const.nl);
         sb.append(gl);
         sb.append(Const.nl);

@@ -18,14 +18,14 @@
  */
 package dag;
 
-import vcf.Marker;
 import vcf.Markers;
 
 /**
  * <p>Class {@code ImmutableDag} represents a leveled Directed Acyclic Graph
  * (DAG).
  * </p>
- * Instances of class {@code ImmutableDag} are immutable.
+ * <p>Instances of class {@code ImmutableDag} are immutable.
+ * </p>
  *
  * @author Brian L. Browning {@code <browning@uw.edu>}
  */
@@ -41,30 +41,22 @@ public final class ImmutableDag implements Dag {
     private final double[] posArray;
 
     /**
-     * Constructs a new {@code ImmutableDag} instance.
+     * Constructs a new {@code ImmutableDag} instance from the specified data.
      * @param markers the markers
-     * @param levels the levels of the leveled DAG.
-     * @throws IllegalArgumentException if {@code levels.length==0}
-     * @throws IllegalArgumentException if {@code levels.length!=markers.nMarkers()}
-     * @throws IllegalArgumentException if {@code levels[0].nParentNodes()!=1}
+     * @param levels the levels of the leveled DAG
+     * @throws IllegalArgumentException if {@code levels.length == 0}
+     * @throws IllegalArgumentException if {@code levels[0].nParentNodes() != 1}
      * @throws IllegalArgumentException if
-     * {@code markers.marker(j).equals(levels[j].marker())==false} for any
-     * {@code j} satisfying {@code 0<=j && j<levels.length}
-     * @throws IllegalArgumentException if
-     * {@code levels[j-1].nChildNodes()!=levels[j].nParentNodes()} for any
-     * {@code j} satisfying {@code 0<j && j<levels.length}
-     * @throws NullPointerException if {@code markers==null},
-     * if {@code levels==null},
-     * or if {@code levels[j]==null} for any
-     * {@code j} satisfying {@code 0<=j && j<levels.length}
+     * {@code levels[j-1].nChildNodes() != levels[j].nParentNodes()} for any
+     * {@code j} satisfying {@code 0 < j && j < levels.length}
+     * @throws NullPointerException if
+     * {@code (markers == null || levels==null)}, or if
+     * {@code levels[j] == null} for any
+     * {@code j} satisfying {@code 0 <= j && j < levels.length}
      */
     public ImmutableDag(Markers markers, DagLevel[] levels) {
         if (levels.length==0) {
             throw new IllegalArgumentException("levels.length==0");
-        }
-        if (levels.length!=markers.nMarkers()) {
-            String s = "levels.length!=markers.nMarkers()";
-            throw new IllegalArgumentException(s);
         }
         if (levels[0].nParentNodes()!=1) {
             throw new IllegalArgumentException("levels[0].nParentNodes()!=1");
@@ -75,11 +67,6 @@ public final class ImmutableDag implements Dag {
         int maxEdgesPerLevel = 0;
         double[] pos = new double[levels.length];
         for (int j=0; j<levels.length; ++j) {
-            if (markers.marker(j).equals(levels[j].marker())==false) {
-                throw new IllegalArgumentException("marker inconsistency");
-            }
-            assert parentNodesAreConsistent(levels[j]);
-            assert childNodesAreConsistent(levels[j]);
             if (j>0 && levels[j-1].nChildNodes()!=levels[j].nParentNodes()) {
                 throw new IllegalArgumentException("inconsistent levels");
             }
@@ -91,7 +78,7 @@ public final class ImmutableDag implements Dag {
             if (levels[j].nEdges() > maxEdgesPerLevel) {
                 maxEdgesPerLevel = levels[j].nEdges();
             }
-            double d = logCondEdgeProb(levels[j]);
+            double d = minusLog10CondEdgeProb(levels[j]);
             pos[j] = (j==0) ? d : (pos[j-1] + d);
         }
         this.dagLevels = levels.clone();
@@ -103,47 +90,13 @@ public final class ImmutableDag implements Dag {
         this.maxNodes = maxNodesPerLevel;
     }
 
-    private static double logCondEdgeProb(DagLevel level) {
+    private static double minusLog10CondEdgeProb(DagLevel level) {
         float meanScore = 0.0f;
         for (int e=0, n=level.nEdges(); e<n; ++e) {
             meanScore += level.edgeProb(e)*level.condEdgeProb(e);
         }
         double d = -Math.log10(meanScore);
         return (d<0) ? 0.0 : d;
-    }
-
-    private static boolean parentNodesAreConsistent(DagLevel level) {
-        int edgeCnt = 0;
-        int nAlleles = level.marker().nAlleles();
-        for (char pn=0, n=level.nParentNodes(); pn<n; ++pn) {
-           for (byte symbol=0; symbol<nAlleles; ++symbol) {
-               char edge = level.outEdgeBySymbol(pn, symbol);
-               if (edge != Character.MAX_VALUE) {
-                   if (level.parentNode(edge)!=pn) {
-                       return false;
-                   }
-                   if (level.symbol(edge)!=symbol) {
-                       return false;
-                   }
-                   ++edgeCnt;
-               }
-           }
-        }
-        return (edgeCnt==level.nEdges());
-    }
-
-    private static boolean childNodesAreConsistent(DagLevel level) {
-        int edgeCnt = 0;
-        for (int cn=0, n=level.nChildNodes(); cn<n; ++cn) {
-            for (char k=0, m=level.nInEdges(cn); k<m; ++k) {
-                char edge = level.inEdge(cn, k);
-                if (level.childNode(edge)!=cn) {
-                    return false;
-                }
-                ++edgeCnt;
-            }
-        }
-        return (edgeCnt==level.nEdges());
     }
 
     @Override
@@ -172,19 +125,19 @@ public final class ImmutableDag implements Dag {
     }
 
     @Override
-    public byte symbol(int level, int edge) {
+    public int symbol(int level, int edge) {
         return dagLevels[level].symbol(edge);
     }
 
     @Override
-    public float edgeCnt(int level, int edge) {
-        return dagLevels[level].edgeCnt(edge);
+    public float edgeWeight(int level, int edge) {
+        return dagLevels[level].edgeWeight(edge);
     }
 
 
     @Override
-    public float nodeCnt(int level, int parentNode) {
-        return dagLevels[level].nodeCnt(parentNode);
+    public float parentWeight(int level, int parentNode) {
+        return dagLevels[level].parentWeight(parentNode);
     }
 
     @Override
@@ -199,23 +152,18 @@ public final class ImmutableDag implements Dag {
     }
 
     @Override
-    public float nodeProb(int level, int node) {
-        return dagLevels[level].nodeProb(node);
+    public float parentProb(int level, int node) {
+        return dagLevels[level].parentProb(node);
     }
 
     @Override
-    public int nMarkers() {
+    public int nLevels() {
         return dagLevels.length;
     }
 
     @Override
     public Markers markers() {
         return markers;
-    }
-
-    @Override
-    public Marker marker(int marker) {
-        return markers.marker(marker);
     }
 
     @Override
@@ -249,7 +197,7 @@ public final class ImmutableDag implements Dag {
     }
 
     @Override
-    public int outEdgeBySymbol(int level, int parentNode, byte symbol) {
+    public int outEdgeBySymbol(int level, int parentNode, int symbol) {
         return dagLevels[level].outEdgeBySymbol(parentNode, symbol);
     }
 
@@ -265,8 +213,8 @@ public final class ImmutableDag implements Dag {
 
     @Override
     public boolean isChildOf(int parentLevel, int parentEdge, int childEdge) {
-        char nodeA = dagLevels[parentLevel+1].parentNode(childEdge);
-        char nodeB = dagLevels[parentLevel].childNode(parentEdge);
+        int nodeA = dagLevels[parentLevel+1].parentNode(childEdge);
+        int nodeB = dagLevels[parentLevel].childNode(parentEdge);
         return nodeA==nodeB;
     }
 
@@ -278,7 +226,7 @@ public final class ImmutableDag implements Dag {
     @Override
     public String toString(int startLevel, int endLevel) {
         String nl = System.getProperty("line.separator");
-        StringBuilder sb = new StringBuilder();
+        StringBuilder sb = new StringBuilder(1000);
         for (int j=startLevel; j<endLevel; ++j) {
             sb.append("level=");
             sb.append(j);
@@ -292,19 +240,20 @@ public final class ImmutableDag implements Dag {
     @Override
     public String toString() {
         String nl = System.getProperty("line.separator");
-        StringBuilder sb = new StringBuilder();
-        sb.append("[Dag: nMarkers= ");
+        StringBuilder sb = new StringBuilder(2000);
+        sb.append("[Dag: nMarkers=");
         sb.append(dagLevels.length);
         sb.append("  nodes=");
         sb.append(nNodes);
         sb.append("  edges=");
         sb.append(nEdges);
-        sb.append("  maxNodes = ");
+        sb.append("  maxNodes=");
         sb.append((int) maxNodes);
-        sb.append("  maxEdges = ");
+        sb.append("  maxEdges=");
         sb.append((int) maxEdges);
         sb.append(nl);
         for (int j=0; j<dagLevels.length; ++j) {
+            sb.append(nl);
             sb.append("level=");
             sb.append(j);
             sb.append(": ");

@@ -23,7 +23,7 @@ import java.util.Arrays;
 /**
  * <p>Class {@code Samples} stores a list of samples.
  * </p>
- * Class {@code Samples} is immutable.
+ * Instances of class {@code Samples} are immutable.
  *
  * @author Brian L. Browning
  */
@@ -35,16 +35,15 @@ public final class Samples {
 
     /**
      * Constructs a new instance of {@code Samples} corresponding to
-     * the specified list of sample identifier indices (see the
-     * {@code beagleutil.Ids} class).
-     * @param idIndices an array of sample identifier indices.
+     * the specified list of sample identifier indices.
+     * @param idIndices an array of sample identifier indices
      *
      * @throws IllegalArgumentException if the specified array
-     * has two or more elements that are equal.
+     * has two or more elements that are equal
      * @throws IndexOutOfBoundsException if any element of the specified
      * array is negative or greater than or equal to
-     * {@code beagleutil.Ids.size()}.
-     * @throws NullPointerException if {@code indices==null}.
+     * {@code beagleutil.SampleIds.size()}
+     * @throws NullPointerException if {@code idIndices == null}
      */
     public Samples(int[] idIndices) {
         int[] copy = idIndices.clone();
@@ -70,26 +69,35 @@ public final class Samples {
     }
 
     /**
-     * Constructs and returns a }Samples} instance
+     * Constructs and returns a {@code Samples} instance
      * corresponding to the specified list of sample identifiers.
      * @param ids an array of sample identifiers.
-     * @return a }Samples} instance
-     * corresponding to the specified list of sample identifiers.
+     * @return a {@code Samples} instance corresponding to the specified
+     * list of sample identifiers
      *
      * @throws IllegalArgumentException if the specified array
-     * has two or more elements that are equal as strings.
-     * @throws NullPointerException if {@code ids==null}.
+     * has two or more elements that are equal as strings
+     * @throws NullPointerException if {@code ids == null}
      */
     public static Samples fromIds(String[] ids) {
         int[] indices = new int[ids.length];
         for (int j=0; j<ids.length; ++j) {
-            indices[j] = sampleIds.indexOf(ids[j]);
+            indices[j] = sampleIds.getIndex(ids[j]);
         }
         return new Samples(indices);
     }
 
     /**
-     * Returns a hash code value for the object.
+     * <p>Returns a hash code value for the object.
+     * </p>
+     * <p>The hash code is defined by the following calculation:
+     * </p>
+     * <pre>
+        int hash = 1;
+        for (int j, n=this.nSamples(); j&lt;n; ++j) {
+            hash = 31 * hash + this.idIndex(j);
+        }
+     * </pre>
      * @return a hash code value for the object.
      */
     @Override
@@ -102,11 +110,10 @@ public final class Samples {
      * {@code Samples} object which represents the same ordered
      * list of samples as {@code this}, and returns {@code false}
      * otherwise.
-     * @param obj the object to be tested for equality with {@code this}.
+     * @param obj the object to be tested for equality with {@code this}
      * @return {@code true} if the specified object is a
      * {@code Samples} object which represents the same ordered
-     * list of samples as {@code this}, and returns {@code false}
-     * otherwise.
+     * list of samples as {@code this}
      */
     @Override
     public boolean equals(Object obj) {
@@ -121,27 +128,27 @@ public final class Samples {
     }
 
     /**
-     * Returns the sample identifier index corresponding to the specified
-     * index in this list of samples.
-     * @param index a sample index.
-     * @return the sample identifier index corresponding to the specified
-     * index in this list of samples.
+     * Returns the sample identifier index corresponding to the sample
+     * with the specified index in this list of samples.
+     * @param index a sample index
+     * @return the sample identifier index corresponding to the sample
+     * with the specified index in this list of samples
      * @throws IndexOutOfBoundsException if
-     * {@code index<0 || index>=this.nSamples()}.
+     * {@code index < 0 || index >= this.nSamples()}
      */
     public int idIndex(int index) {
         return indexToIdIndex[index];
     }
 
     /**
-     * Returns the sample index that corresponds to the
+     * Returns the index of the sample that corresponds to the
      * specified sample identifier index, or returns {@code -1}
      * if there is no corresponding sample in this list of samples.
-     * @param idIndex a sample identifier index.
-     * @return the sample index that corresponds to the
+     * @param idIndex a sample identifier index
+     * @return the index of the sample that corresponds to the
      * specified sample identifier index, or returns {@code -1}
-     * if there is no corresponding sample in this list of samples.
-     * @throws IndexOutOfBoundsException if {@code index<0}.
+     * if there is no corresponding sample in this list of samples
+     * @throws IndexOutOfBoundsException if {@code index < 0}
      */
     public int index(int idIndex) {
         if (idIndex >= idIndexToIndex.length) {
@@ -151,17 +158,17 @@ public final class Samples {
     }
 
     /**
-     * Returns the sample index that corresponds to the
+     * Returns the index of the sample that corresponds to the
      * specified sample identifier, or returns {@code -1}
      * if there is no corresponding sample in this list of samples.
-     * @param id a sample identifier.
-     * @return the sample index that corresponds to the
-     * specified sample identifier index, or returns {@code -1}
-     * if there is no corresponding sample in this list of samples.
-     * @throws NullPointerException if {@code id==null}.
+     * @param id a sample identifier
+     * @return the index of the sample that corresponds to the
+     * specified sample identifier, or returns {@code -1}
+     * if there is no corresponding sample in this list of samples
+     * @throws NullPointerException if {@code id == null}
      */
     public int index(String id) {
-        int idIndex = SampleIds.instance().indexIfIndexed(id);
+        int idIndex = SampleIds.instance().getIndexIfIndexed(id);
         if (idIndex != -1) {
             return index(idIndex);
         }
@@ -172,20 +179,20 @@ public final class Samples {
 
     /**
      * Returns the number of samples in this list.
-     * @return the number of samples in this list.
+     * @return the number of samples in this list
      */
     public int nSamples() {
         return indexToIdIndex.length;
     }
 
     /**
-     * Returns the sample identifier for the specified sample in this list
-     * of samples.
+     * Returns the identifier for the sample with the specified
+     * index in this list of samples.
      * @param index a sample index
-     * @return the sample identifier for the specified sample in this list
-     * of samples.
+     * @return the identifier for the sample with the specified
+     * index in this list of samples
      * @throws IndexOutOfBoundsException if
-     * {@code index<0 || index>=this.nSamples()}.
+     * {@code index < 0 || index >= this.nSamples()}
      */
     public String id(int index) {
         return sampleIds.id(indexToIdIndex[index]);
@@ -194,9 +201,9 @@ public final class Samples {
     /**
      * Returns this list of samples as an array of sample identifiers.
      * The returned array has length {@code this.nSamples()}, and it
-     * satisfies {@code this.ids()[index].equals(this.id(index))} for
-     * {@code 0<=index<this.nSamples()}.
-     * @return this list of samples as an array of sample identifiers.
+     * satisfies {@code this.ids()[j].equals(this.id(j))} for
+     * {@code 0 <= j && j < this.nSamples()}
+     * @return this list of samples as an array of sample identifiers
      */
     public String[] ids() {
         String[] ids = new String[indexToIdIndex.length];
@@ -207,13 +214,12 @@ public final class Samples {
     }
 
     /**
-     * Returns a string representation of {@code this}.
-     * The exact details of the representation are unspecified and
-     * subject to change.
-     * @return a string representation of {@code this}.
+     * Returns {@code java.util.Arrays.toString(this.ids())}.
+     *
+     * @return a string representation of {@code this}
      */
     @Override
     public String toString() {
-        return Arrays.toString(indexToIdIndex);
+        return Arrays.toString(ids());
     }
 }

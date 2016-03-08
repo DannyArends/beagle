@@ -24,90 +24,84 @@ import vcf.BasicGL;
 import vcf.GL;
 
 /**
- * Class {@code SingleBaumLevel} computes forward and backward Baum
+ * <p>Class {@code SingleBaumLevel} computes forward and backward Baum
  * values at a level of a hidden Markov model (HMM) whose states are
  * ordered edge pairs of a leveled directed acyclic graph (DAG).
+ * </p>
+ * <p>Instances of class {@code SingleBaumLevel} are not thread-safe.
+ * </p>
  *
  * @author Brian L. Browning {@code <browning@uw.edu>}
  */
 public class SingleBaumLevel {
 
     private static final int INITIAL_CAPACITY = 400;
-    private static final double MIN_VALUE = 100*Double.MIN_VALUE;
+    private static final float MIN_VALUE = 100*Float.MIN_VALUE;
     private final Dag dag;
     private final GL gl;
 
     private int marker = -1;
     private int sample = -1;
-    private int size=0;
+    private int size = 0;
 
     private int capacity = INITIAL_CAPACITY;
     private int[] edges1 = new int[INITIAL_CAPACITY];
     private int[] edges2 = new int[INITIAL_CAPACITY];
-    private double[] fwdValues = new double[INITIAL_CAPACITY];
-    private double[] bwdValues = new double[INITIAL_CAPACITY];
-    private double fwdValueSum = 0.0;
-    private double bwdValueSum = 0.0;
+    private float[] fwdValues = new float[INITIAL_CAPACITY];
+    private float[] bwdValues = new float[INITIAL_CAPACITY];
+    private float fwdValueSum = 0f;
+    private float bwdValueSum = 0f;
 
     private int nGenotypes = 0;
-    private double[] gtProbs = new double[3];
+    private float[] gtProbs = new float[3];
 
     /**
-     * Constructs a new {@code SingleBaumLevel} instance.
+     * Constructs a new {@code SingleBaumLevel} instance from the specified
+     * data.
      * @param dag the directed acyclic graph that the determines transition
-     * probabilities.
-     * @param gl the emission probabilities.
+     * probabilities
+     * @param gl the emission probabilities
      * @throws IllegalArgumentException if
-     * {@code dag.markers().equals(gl.markers())==false}
-     * @throws NullPointerException if {@code dag==null || gl==null}
+     * {@code dag.markers().equals(gl.markers()) == false}
+     * @throws NullPointerException if {@code dag == null || gl == null}
      */
     public SingleBaumLevel(Dag dag, GL gl) {
         if (dag.markers().equals(gl.markers())==false) {
-            throw new IllegalArgumentException("marker inconsistency");
+            throw new IllegalArgumentException("inconsistent markers");
         }
         this.dag = dag;
         this.gl = gl;
     }
 
     /**
-     * Initializes the node pair values for the Baum forward algorithm.
-     *
-     * @param nodes the node pair values to be initialized.
-     */
-    public static void initializeNodes(SingleNodes nodes) {
-        nodes.clear();
-        nodes.sumUpdate(0, 0, 1.0);
-    }
-
-    /**
      * Sets the Baum forward algorithm values for this level of the HMM
      * and records the child node pair values in the specified
-     * {@code nodes} parameter.
+     * {@code nodes} parameter. When the method call returns, the {@code nodes}
+     * parameter will be reset to the child node pair values for this level of
+     * the HMM.
      *
-     * @param nodes child node pair values at the previous level of HMM.  When
-     * the method call returns, this parameter will be reset to the child
-     * node pair values for this level of the HMM.
+     * @param nodes child node pair values at the previous level of the HMM
      * @param marker the level of the HMM at which the Baum forward algorithm
-     * values will be computed.
-     * @param sample a sample index.
+     * values will be computed
+     * @param sample a sample index
      *
      * @throws IndexOutOfBoundsException if
-     * {@code marker<0 || marker>=this.dag().nMarkers()}
+     * {@code marker < 0 || marker >= this.dag().nMarkers()}
      * @throws IndexOutOfBoundsException if
-     * {@code sample<0 || sample>=this.gl().nSamples()}
+     * {@code sample < 0 || sample >= this.gl().nSamples()}
      * @throws IndexOutOfBoundsException if either node in any node pair with
      * non-zero value is not a valid parent node at the specified level of the
      * HMM
-     * @throws NullPointerException if {@code nodes==null}
+     * @throws NullPointerException if {@code nodes == null}
      */
     public void setForwardValues(SingleNodes nodes, int marker, int sample) {
         this.marker = marker;
         this.sample = sample;
         this.nGenotypes = gl.marker(marker).nGenotypes();
         this.size = 0;
-        this.fwdValueSum = 0.0;
-        this.bwdValueSum = 0.0;
-        initializeGtProbs(); // called here due to grProbs() contract
+        this.fwdValueSum = 0f;
+        this.bwdValueSum = 0f;
+        initializeGtProbs(); // initialized here due to gtProbs() contract
         setStates(nodes);
         setChildNodes(nodes);
     }
@@ -115,26 +109,25 @@ public class SingleBaumLevel {
     private void initializeGtProbs() {
         if (gtProbs.length < nGenotypes) {
             int newLength = Math.max(nGenotypes, (3*gtProbs.length/2 + 1));
-            gtProbs = new double[newLength];
+            gtProbs = new float[newLength];
         }
         else {
-            for (int j=0; j<nGenotypes; ++j) {
-                gtProbs[j] = 0.0;
-            }
+            Arrays.fill(gtProbs, 0, nGenotypes, 0f);
+
         }
     }
 
     private void setStates(SingleNodes nodes) {
-        double valueSum = 0.0;
+        float valueSum = 0f;
         for (int j=0, n=nodes.size(); j<n; ++j) {
             int node1 = nodes.enumNode1(j);
             int node2 = nodes.enumNode2(j);
             for (int i1=0, nI1=dag.nOutEdges(marker, node1); i1<nI1; ++i1) {
                 int edge1 = dag.outEdge(marker, node1, i1);
-                byte symbol1 = dag.symbol(marker, edge1);
+                int symbol1 = dag.symbol(marker, edge1);
                 for (int i2=0, nI2=dag.nOutEdges(marker, node2); i2<nI2; ++i2) {
                     int edge2 = dag.outEdge(marker, node2, i2);
-                    byte symbol2 = dag.symbol(marker, edge2);
+                    int symbol2 = dag.symbol(marker, edge2);
                     float ep = gl.gl(marker, sample, symbol1, symbol2);
                     if (ep > 0.0) {
                         if (size == capacity) {
@@ -142,9 +135,9 @@ public class SingleBaumLevel {
                         }
                         edges1[size] = edge1;
                         edges2[size] = edge2;
-                        double tp1 = dag.condEdgeProb(marker, edge1);
-                        double tp2 = dag.condEdgeProb(marker, edge2);
-                        double fwdValue = ep * nodes.enumValue(j) * (tp1 * tp2);
+                        float tp1 = dag.condEdgeProb(marker, edge1);
+                        float tp2 = dag.condEdgeProb(marker, edge2);
+                        float fwdValue = ep * nodes.enumValue(j) * (tp1 * tp2);
                         if (fwdValue<MIN_VALUE && nodes.enumValue(j) > 0.0) {
                             fwdValue = MIN_VALUE;
                         }
@@ -165,9 +158,9 @@ public class SingleBaumLevel {
      * Stores the Baum forward algorithm child node pair values for this
      * level of the HMM in the specified {@code SingleNodes} object.
      *
-     * @param nodes the node pair values that will be set.
+     * @param nodes the node pair values that will be set
      *
-     * @throws NullPointerException if {@code nodes==null}
+     * @throws NullPointerException if {@code nodes == null}
      */
     public void setChildNodes(SingleNodes nodes) {
         nodes.clear();
@@ -179,69 +172,51 @@ public class SingleBaumLevel {
     }
 
     /**
-     * Initializes the node pair values for the Baum backward algorithm.
-     *
-     * @param nodes the node pair values to be initialized.
-     * @throws NullPointerException if {@code nodes==null}
-     */
-    public void setInitialBackwardValues(SingleNodes nodes) {
-        nodes.clear();
-        for (int j=0; j<size; ++j) {
-            int node1 = dag.childNode(marker, edges1[j]);
-            int node2 = dag.childNode(marker, edges2[j]);
-            nodes.maxUpdate(node1, node2, 1.0);
-        }
-        setBackwardValues(nodes);
-    }
-
-    /**
      * Sets the Baum backward algorithm values for this level of the HMM
      * and stores the parent node pair values in the specified
-     * {@code nodes} parameter.
-     *
-     * @param nodes parent node pair values at the next level of HMM.  When
-     * the method call returns, this parameter will be reset to the parent
+     * {@code nodes} parameter.  When the method call returns, the
+     * {@code nodes} parameter will be reset to the parent
      * node pair values for this level of the HMM.
      *
+     * @param nodes parent node pair values at the next level of HMM
+     *
      * @throws IndexOutOfBoundsException if either node in any node pair with
-     * non-zero value is not a valid child node at the {@code this.marker()}
-     * level of the HMM
-     * @throws NullPointerException if {@code nodes==null}
+     * non-zero value is not a valid child node at this level of the HMM
+     * @throws NullPointerException if {@code nodes == null}
      */
     public void setBackwardValues(SingleNodes nodes) {
-        bwdValueSum = 0.0;
-        double gtProbsSum = 0.0;
         for (int j=0; j<size; ++j) {
             int node1 = dag.childNode(marker, edges1[j]);
             int node2 = dag.childNode(marker, edges2[j]);
-            double backwardValue = nodes.value(node1, node2);
+            float backwardValue = nodes.value(node1, node2);
             bwdValues[j] = backwardValue;
             bwdValueSum += backwardValue;
         }
         nodes.clear();
+        float gtProbsSum = 0f;
         for (int j=0; j<size; ++j) {
             bwdValues[j] /= bwdValueSum;
             int edge1 = edges1[j];
             int edge2 = edges2[j];
-            byte symbol1 = symbol1(j);
-            byte symbol2 = symbol2(j);
-            int node1 = dag.parentNode(marker, edge1);
-            int node2 = dag.parentNode(marker, edge2);
-            double tp1 = dag.condEdgeProb(marker, edge1);
-            double tp2 = dag.condEdgeProb(marker, edge2);
+            int symbol1 = symbol1(j);
+            int symbol2 = symbol2(j);
+            float tp1 = dag.condEdgeProb(marker, edge1);
+            float tp2 = dag.condEdgeProb(marker, edge2);
 
-            double stateProb = fwdValues[j] * bwdValues[j];
+            float stateProb = fwdValues[j] * bwdValues[j];
             int gtIndex = BasicGL.genotype(symbol1, symbol2);
-            // gtProbs initialized in setForwardValues() method
+            // gtProbs assumed to be initialized in setForwardValues() method
             gtProbs[gtIndex] += stateProb;
             gtProbsSum += stateProb;
 
-            double ep = gl.gl(marker, sample, symbol1, symbol2);
-            double bwdValue = bwdValues[j] * (tp1 * tp2) * ep;
+            float ep = gl.gl(marker, sample, symbol1, symbol2);
+            float bwdValue = bwdValues[j] * (tp1 * tp2) * ep;
             if (bwdValue < MIN_VALUE && bwdValues[j]>0.0) {
                 bwdValue = MIN_VALUE;
             }
-            nodes.sumUpdate(node1, node2, bwdValue);
+            int pn1 = dag.parentNode(marker, edge1);
+            int pn2 = dag.parentNode(marker, edge2);
+            nodes.sumUpdate(pn1, pn2, bwdValue);
         }
         for (int j=0; j<nGenotypes; ++j) {
             gtProbs[j] /= gtProbsSum;
@@ -252,7 +227,7 @@ public class SingleBaumLevel {
      * Returns the directed acyclic graph that determines the transition
      * probabilities.
      * @return the directed acyclic graph that determines the transition
-     * probabilities.
+     * probabilities
      */
     public Dag dag() {
         return dag;
@@ -260,7 +235,7 @@ public class SingleBaumLevel {
 
     /**
      * Returns the emission probabilities.
-     * @return the emission probabilities.
+     * @return the emission probabilities
      */
     public GL gl() {
         return gl;
@@ -268,7 +243,7 @@ public class SingleBaumLevel {
 
     /**
      * Return the level of the HMM.
-     * @return the level of the HMM.
+     * @return the level of the HMM
      */
     public int marker() {
         return marker;
@@ -276,7 +251,7 @@ public class SingleBaumLevel {
 
     /**
      * Return the number of possible genotypes at this level of the HMM.
-     * @return the number of possible genotypes at this level of the HMM.
+     * @return the number of possible genotypes at this level of the HMM
      */
     public int nGenotypes() {
         return nGenotypes;
@@ -284,13 +259,13 @@ public class SingleBaumLevel {
 
     /**
      * Returns the specified posterior genotype probability.  Returns 0
-     * if the Baum backward values have not been set.
-     * @param gt a genotype index.
-     * @return the specified posterior genotype probability.
+     * if the Baum backward probabilities have not been set.
+     * @param gt a genotype index
+     * @return the specified posterior genotype probability
      * @throws IndexOutOfBoundsException if
-     * {@code gt<0 || gt>=this.nGenotypes()}
+     * {@code gt < 0 || gt >= this.nGenotypes()}
      */
-    public double gtProbs(int gt) {
+    public float gtProbs(int gt) {
         if (gt >= nGenotypes) {
             throw new IllegalArgumentException(String.valueOf(gt));
         }
@@ -302,7 +277,7 @@ public class SingleBaumLevel {
      * this level of the HMM.
      *
      * @return the number of states with nonzero forward probability at
-     * this level of the HMM.
+     * this level of the HMM
      */
     public int size() {
         return size;
@@ -315,15 +290,14 @@ public class SingleBaumLevel {
     }
 
     /**
-     * Returns the DAG level edge index for the first edge of the
-     * specified HMM state with nonzero forward probability.
-     * @param state an index of a HMM state at this level with nonzero
-     * forward probability.
-     * @return the DAG level edge index for the first edge of the
-     * specified HMM state with nonzero forward probability.
+     * Returns the first edge of the specified HMM state with nonzero forward
+     * probability.
+     * @param state an index of a HMM state with nonzero forward probability
+     * @return the first edge of the specified HMM state with nonzero forward
+     * probability
      *
      * @throws IndexOutOfBoundsException if
-     * {@code state<0 || state>=this.size()}
+     * {@code state < 0 || state >= this.size()}
      */
     public int edge1(int state) {
         checkIndex(state);
@@ -331,15 +305,14 @@ public class SingleBaumLevel {
     }
 
     /**
-     * Returns the DAG level edge index for the second edge of the
-     * specified HMM state with nonzero forward probability.
-     * @param state an index of a HMM state at this level with nonzero
-     * forward probability.
-     * @return the DAG level edge index for the second edge of the
-     * specified HMM state with nonzero forward probability.
+     * Returns the second edge of the specified HMM state with nonzero forward
+     * probability.
+     * @param state an index of a HMM state with nonzero forward probability
+     * @return the second edge of the specified HMM state with nonzero forward
+     * probability
      *
      * @throws IndexOutOfBoundsException if
-     * {@code state<0 || state>=this.size()}
+     * {@code state < 0 || state >= this.size()}
      */
     public int edge2(int state) {
         checkIndex(state);
@@ -347,16 +320,15 @@ public class SingleBaumLevel {
     }
 
     /**
-     * Returns the DAG level parent node index for the parent node of the
-     * first edge of the specified HMM state with nonzero forward probability.
+     * Returns the parent node of the first edge of the specified HMM state
+     * with nonzero forward probability.
      *
-     * @param state an index of a HMM state at this level with nonzero
-     * forward probability.
-     * @return the DAG level parent node index for the parent node of the
-     * first edge of the specified HMM state with nonzero forward probability.
+     * @param state an index of a HMM state with nonzero forward probability
+     * @return the parent node of the first edge of the specified HMM state
+     * with nonzero forward probability
      *
      * @throws IndexOutOfBoundsException if
-     * {@code state<0 || state>=this.size()}
+     * {@code state < 0 || state >= this.size()}
      */
     public int parentNode1(int state) {
         checkIndex(state);
@@ -364,16 +336,15 @@ public class SingleBaumLevel {
     }
 
     /**
-     * Returns the DAG level parent node index for the parent node of the
-     * second edge of the specified HMM state with nonzero forward probability.
+     * Returns the parent node of the second edge of the specified HMM state
+     * with nonzero forward probability.
      *
-     * @param state an index of a HMM state at this level with nonzero
-     * forward probability.
-     * @return the DAG level parent node index for the parent node of the
-     * second edge of the specified HMM state with nonzero forward probability.
+     * @param state an index of a HMM state with nonzero forward probability
+     * @return the parent node of the second edge of the specified HMM state
+     * with nonzero forward probability
      *
      * @throws IndexOutOfBoundsException if
-     * {@code state<0 || state>=this.size()}
+     * {@code state < 0 || state >= this.size()}
      */
     public int parentNode2(int state) {
         checkIndex(state);
@@ -381,16 +352,15 @@ public class SingleBaumLevel {
     }
 
     /**
-     * Returns the DAG level child node index for the child node of the
-     * first edge of the specified HMM state with nonzero forward probability.
+     * Returns the child node of the first edge of the specified HMM state
+     * with nonzero forward probability.
      *
-     * @param state an index of a HMM state at this level with nonzero
-     * forward probability.
-     * @return the DAG level child node index for the child node of the
-     * first edge of the specified HMM state with nonzero forward probability.
+     * @param state an index of a HMM state with nonzero forward probability
+     * @return the child node of the first edge of the specified HMM state
+     * with nonzero forward probability
      *
      * @throws IndexOutOfBoundsException if
-     * {@code state<0 || state>=this.size()}
+     * {@code state < 0 || state >= this.size()}
      */
     public int childNode1(int state) {
         checkIndex(state);
@@ -398,16 +368,15 @@ public class SingleBaumLevel {
     }
 
     /**
-     * Returns the DAG level child node index for the child node of the
-     * second edge of the specified HMM state with nonzero forward probability.
+     * Returns the child node of the second edge of the specified HMM state
+     * with nonzero forward probability.
      *
-     * @param state an index of a HMM state at this level with nonzero
-     * forward probability.
-     * @return the DAG level child node index for the child node of the
-     * second edge of the specified HMM state with nonzero forward probability.
+     * @param state an index of a HMM state with nonzero forward probability
+     * @return the child node of the second edge of the specified HMM state
+     * with nonzero forward probability
      *
      * @throws IndexOutOfBoundsException if
-     * {@code state<0 || state>=this.size()}
+     * {@code state < 0 || state >= this.size()}
      */
     public int childNode2(int state) {
         checkIndex(state);
@@ -418,15 +387,14 @@ public class SingleBaumLevel {
      * Returns the symbol for the first edge of the specified HMM state
      * with nonzero forward probability.
      *
-     * @param state an index of a HMM state at this level with nonzero
-     * forward probability.
+     * @param state an index of a HMM state with nonzero forward probability
      * @return the symbol for the first edge of the specified HMM state
-     * with nonzero forward probability.
+     * with nonzero forward probability
      *
      * @throws IndexOutOfBoundsException if
-     * {@code state<0 || state>=this.size()}
+     * {@code state < 0 || state >= this.size()}
      */
-    public byte symbol1(int state) {
+    public int symbol1(int state) {
         return dag.symbol(marker, edge1(state));
     }
 
@@ -434,15 +402,14 @@ public class SingleBaumLevel {
      * Returns the symbol for the second edge of the specified HMM state
      * with nonzero forward probability.
      *
-     * @param state an index of a HMM state at this level with nonzero
-     * forward probability.
+     * @param state an index of a HMM state with nonzero forward probability
      * @return the symbol for the second edge of the specified HMM state
-     * with nonzero forward probability.
+     * with nonzero forward probability
      *
      * @throws IndexOutOfBoundsException if
-     * {@code state<0 || state>=this.size()}
+     * {@code state < 0 || state >= this.size()}
      */
-    public byte symbol2(int state) {
+    public int symbol2(int state) {
         return dag.symbol(marker, edge2(state));
     }
 
@@ -453,16 +420,15 @@ public class SingleBaumLevel {
      * forward value by the sum of the forward values at this level
      * of the HMM.
      *
-     * @param state an index of a HMM state at this level with nonzero
-     * forward probability.
+     * @param state an index of a HMM state with nonzero forward probability
      *
      * @return the normalized forward value for the specified HMM state
-     * with nonzero forward probability.
+     * with nonzero forward probability
      *
      * @throws IndexOutOfBoundsException if
-     * {@code state<0 || state>=this.size()}
+     * {@code state < 0 || state >= this.size()}
      */
-    public double forwardValue(int state) {
+    public float forwardValue(int state) {
         checkIndex(state);
         return fwdValues[state];
     }
@@ -474,36 +440,36 @@ public class SingleBaumLevel {
      * backward value by the sum of the backward values at this level
      * of the HMM.
      *
-     * @param state an index of a state with nonzero backward value.
+     * @param state an index of a state with nonzero forward probability
      *
      * @return the normalized backward value for the specified HMM state
-     * with nonzero forward probability.
+     * with nonzero forward probability
      *
      * @throws IndexOutOfBoundsException if
-     * {@code state<0 || state>=this.size()}
+     * {@code state < 0 || state >= this.size()}
      */
-    public double backwardValue(int state) {
+    public float backwardValue(int state) {
         checkIndex(state);
         return bwdValues[state];
     }
 
     /**
      * Returns the sum of the forward values at this level of the HMM
-     * when the forward values are computed using normalized forward values
+     * when the forward values are computed using forward values
      * from the previous level that are normalized to sum to 1.
-     * @return the sum of the forward values at this level of the HMM.
+     * @return the sum of the forward values at this level of the HMM
      */
-    public double forwardValuesSum() {
+    public float forwardValuesSum() {
         return fwdValueSum;
     }
 
     /**
      * Returns the sum of the backward values at this level of the HMM
-     * when the backward values are computed using normalized backward
+     * when the backward values are computed using backward
      * values from the next level that are normalized to sum to 1.
-     * @return the sum of the backward values at this level of the HMM.
+     * @return the sum of the backward values at this level of the HMM
      */
-    public double backwardValuesSum() {
+    public float backwardValuesSum() {
         return bwdValueSum;
     }
 
@@ -511,7 +477,7 @@ public class SingleBaumLevel {
      * Returns a string description of {@code this}.  The exact details
      * of the description are unspecified and subject to change.
      *
-     * @return a string description of {@code this}.
+     * @return a string description of {@code this}
      */
     @Override
     public String toString() {
@@ -547,7 +513,7 @@ public class SingleBaumLevel {
      * Increases the state capacity of array fields as necessary
      * to be greater than or equal to the specified minimum capacity.
      *
-     * @param minCapacity the desired minimum state capacity.
+     * @param minCapacity the desired minimum state capacity
      */
     private void ensureCapacity(int minCapacity) {
         if (minCapacity >capacity) {

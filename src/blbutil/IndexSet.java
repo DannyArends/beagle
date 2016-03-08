@@ -18,12 +18,17 @@
  */
 package blbutil;
 
+import java.util.Arrays;
+
 /**
  * <p>Class {@code IndexSet} is a set that stores non-negative indices that are
  * less than or equal to a specified maximum value.
  * </p>
- * Class {@code IndexSet} supports a {@code clear()} method, but does not
+ * <p>Class {@code IndexSet} supports a {@code clear()} method, but it does not
  * support a {@code remove()} method.
+ * </p>
+ * <p>Class {@code IndexSet} is not thread-safe.
+ * </p>
  *
  * @author Brian L. Browning {@code <browning@uw.edu>}
  */
@@ -37,32 +42,32 @@ public class IndexSet {
      * Creates a new instance of {@code IndexSet} that can contain
      * non-negative integer indices that are less than or equal to the specified
      * maximum value.
-     * @param maxIndex the maximum index value..
+     *
+     * @param max the maximum element that is permitted in the set.
+     * @throws IllegalArgumentException if {@code max < 0}
      */
-    public IndexSet(int maxIndex) {
-        if (maxIndex < 0) {
-            throw new IllegalArgumentException("maxIndex<0: " + maxIndex);
+    public IndexSet(int max) {
+        if (max < 0) {
+            throw new IllegalArgumentException(String.valueOf(max));
         }
-        this.inSet = new boolean[maxIndex+1];
-        this.indices = new int[maxIndex+1];
+        this.inSet = new boolean[max+1];
+        this.indices = new int[max+1];
     }
 
     /**
-     * Adds the specified index and value the set.  Returns {@code true}
-     * if the set was changed by the operation, and returns {@code false}
-     * otherwise.
+     * Adds the specified element to the set.
      *
-     * @param index the index to add to this set.
+     * @param element an element to add to this set.
      * @return {@code true} if the set was changed by the operation, and
      * {@code false} otherwise.
      *
      * @throws IndexOutOfBoundsException if
-     * {@code index<0 || index>this.maxIndex()}.
+     * {@code index < 0 || index > this.maxPermittedIndex()}
      */
-    public boolean add(int index) {
-        if (inSet[index]==false) {
-            indices[size++] = index;
-            inSet[index]=true;
+    public boolean add(int element) {
+        if (inSet[element]==false) {
+            indices[size++] = element;
+            inSet[element]=true;
             return true;
         }
         else {
@@ -71,39 +76,38 @@ public class IndexSet {
     }
 
     /**
-     * Returns {@code true} if the set contains the specified index,
+     * Returns {@code true} if the set contains the specified element,
      * and returns {@code false} otherwise.
-     * @param index an index
-     * @return {@code true} if the set contains the specified index,
-     * and {@code false} otherwise.
+     * @param element an element
+     * @return {@code true} if the set contains the specified element
      *
      * @throws IndexOutOfBoundsException if
-     * {@code index<0 || index>this.maxIndex()}.
+     * {@code index < 0 || index > this.maxPermittedIndex()}
      */
-    public boolean contains(int index) {
-        return inSet[index];
+    public boolean contains(int element) {
+        return inSet[element];
     }
 
     /**
-     * Returns the size of this set.
+     * Returns the number of elements in this set.
      *
-     * @return the size of this set.
+     * @return the number of elements in this set
      */
     public int size() {
         return size;
     }
 
     /**
-     * Returns the maximum permitted index in the set.
+     * Returns the maximum permitted element in the set.
      *
-     * @return the maximum permitted index in the set.
+     * @return the maximum permitted element in the set
      */
-    public int maxIndex() {
+    public int maxPermittedElement() {
         return indices.length-1;
     }
 
     /**
-     * Removes all indices from the set.
+     * Removes all elements from the set.
      */
     public void clear() {
         for (int j=0, n=size; j<n; ++j) {
@@ -113,38 +117,36 @@ public class IndexSet {
     }
 
     /**
-     * Returns the specified index in an enumeration of the indices in the set.
-     * @param index an index.
-     * @return the specified index in an enumeration of the indices in the set.
+     * Returns the specified element in an enumeration of the elements in the
+     * set.
+     * @param enumIndex an index of an element in the enumeration
+     * @return the specified element in an enumeration of the elements in the
+     * set
      * @throws IndexOutOfBoundsException if
-     * {@code index<0 || index>=this.size()}
+     * {@code enumIndex < 0 || enumIndex >= this.size()}
      */
-    public int enumIndex(int index) {
-        if (index>=size) {
-            throw new IndexOutOfBoundsException(String.valueOf(index));
+    public int enumeratedValue(int enumIndex) {
+        if (enumIndex>=size) {
+            throw new IndexOutOfBoundsException(String.valueOf(enumIndex));
         }
-        return indices[index];
+        return indices[enumIndex];
     }
 
     /**
-     * Returns a string representation of {@code this}.  The exact
-     * details of the representation are unspecified and subject to change.
+     * Returns an array containing the elements in this set.
+     * @return an array containing the elements in this set
+     */
+    public int[] toArray() {
+        return Arrays.copyOf(indices, size);
+    }
+
+    /**
+     * Returns {@code java.util.Arrays.toString(this.toArray())}.
      *
-     * @return a string representation of {@code this}.
+     * @return {@code java.util.Arrays.toString(this.toArray())}
      */
     @Override
     public String toString() {
-        StringBuilder sb = new StringBuilder(80);
-        sb.append("[ size=");
-        sb.append(size);
-        sb.append(" {");
-        for (int j=0; j<size; ++j) {
-            sb.append(enumIndex(j));
-            if (j+1 < size) {
-                sb.append(", ");
-            }
-        }
-        sb.append("} ]");
-        return sb.toString();
+        return Arrays.toString(toArray());
     }
 }

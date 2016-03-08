@@ -38,46 +38,52 @@ public final class Validate {
     }
 
     /**
-     * <p>Returns a map with one (key, value) pair for each element
-     * of the specified array.  Each string element of the specified
-     * array must contain the specified character.
+     * Returns a map with one (key, value) pair for each element
+     * of the specified array.  Each element of the specified {@code String[]}
+     * array must contain the specified delimiter character.
      * For each array element {@code s}, the key is
      * {@code  s.substring(0, s.indexOf(sep))}
      * and the value is {@code s.substring(s.indexOf(sep) + 1)}.
-     * </p>
      *
-     * @param args a string array.
-     * @param sep the character separating a key and value.
+     * @param args a string array
+     * @param delim the delimiter character separating a key and value
      * @return a map with one (key, value) pair for each element
-     * of the specified array.
+     * of the specified array
      *
-     * @throws IllegalArgumentException if the specified key-value
-     * separator is not found in each element of the specified {@code args}
-     * array
-     * @throws IllegalArgumentException if the specified key-value separator
-     * is the last character of any element of the specified array.
+     * @throws IllegalArgumentException if the specified delimiter character is
+     * not found in any string element in the specified {@code String[]} array
+     * @throws IllegalArgumentException if the specified delimiter
+     * is the first or last character of each string element in the specified
+     * {@code String[]} array
      * @throws IllegalArgumentException if any two elements of the
      * specified string array have the same key
-     * @throws NullPointerException if {@code args==null} or if any element
-     * of {@code args} is {@code null}
+     * @throws NullPointerException if {@code args == null} or if
+     * {@code args[j] == null} for any {@code j} satisfying
+     * {@code (0 <= j && j <= args.length)}
      */
-    public static Map<String, String> argsToMap(String[] args, char sep) {
+    public static Map<String, String> argsToMap(String[] args, char delim) {
         Map<String, String> argMap=new HashMap<>();
         for (String arg : args) {
-            int index=arg.indexOf(sep);
+            int index=arg.indexOf(delim);
             if (index!=-1) {
-                if (index==(arg.length()-1)) {
-                    String s="missing value in key-value pair: "+arg;
+                if (index == 0) {
+                    String s = "missing key in key-value pair: " + arg;
+                    throw new IllegalArgumentException(s);
                 }
-                String key=arg.substring(0, index);
-                String value=arg.substring(index+1);
+                if (index==(arg.length()-1)) {
+                    String s = "missing value in key-value pair: " + arg;
+                    throw new IllegalArgumentException(s);
+                }
+                String key = arg.substring(0, index);
+                String value = arg.substring(index+1);
                 if (argMap.containsKey(key)) {
-                    String s="duplicate arguments: "+key;
+                    String s = "duplicate arguments: " + key;
                     throw new IllegalArgumentException(s);
                 }
                 argMap.put(key, value);
             } else {
-                String s="unrecognized argument: "+arg;
+                String s = "missing delimiter character (" + delim + "): "
+                        + arg;
                 throw new IllegalArgumentException(s);
             }
         }
@@ -85,12 +91,12 @@ public final class Validate {
     }
 
     /**
-     * Checks whether the specified map of key-value parameters is empty.
+     * Checks whether the specified map of key-value pairs is empty.
      * If the map is non-empty, the method will print an error message
      * and terminate the Java virtual machine.
      *
-     * @param argsMap a map of key-value parameters.
-     * @throws NullPointerException if {@code argsMap==null}.
+     * @param argsMap a map of key-value pairs
+     * @throws NullPointerException if {@code argsMap == null}
      */
     public static void confirmEmptyMap(Map<String, String> argsMap) {
         Set<String> keySet = argsMap.keySet();
@@ -110,22 +116,23 @@ public final class Validate {
     }
 
     /**
-     * Returns a File corresponding to the specified filename or
-     * {@code null} if {@code filename==null}.
+     * Returns a {@code File} object corresponding to the specified filename or
+     * {@code null} if {@code filename == null}
      *
-     * @param filename a filename.
-     * @return a file corresponding to the specified filename.
+     * @param filename a filename
+     * @return a file corresponding to the specified filename, or {@code null}
+     * if {@code filename == null}
      *
-     * @throws IllegalArgumentException if {@code filename.isEmpty()==true}
-     * @throws IllegalArgumentException if the method parameter is not
-     * {@code null} and the specified file does not exist or is a directory.
+     * @throws IllegalArgumentException if {@code filename.isEmpty() == true}
+     * @throws IllegalArgumentException if {@code filename != null} and the
+     * specified file does not exist or is a directory
      */
     public static File getFile(String filename) {
         if (filename==null) {
             return null;
         }
         if (filename.isEmpty()) {
-            throw new IllegalArgumentException("filename.isEmpty()==true");
+            throw new IllegalArgumentException("filename is empty string");
         }
         else {
             File file = new File(filename);
@@ -145,30 +152,29 @@ public final class Validate {
      * Removes the specified key from the specified map, and returns the
      * integer value corresponding to the specified key.
      *
-     * @param key the key.
-     * @param map a map of key-value pairs.
+     * @param key the key
+     * @param map a map of key-value pairs
      * @param isRequired {@code true} if the specified key
-     * is required to be in the specified map.
+     * is required to be in the specified map, and {@code false} otherwise
      * @param defaultValue the value that will be returned if
-     *   {@code (isRequired==false && map.get(key)==null)}.
+     *   {@code (isRequired == false && map.get(key) == null)}
      * @param min the minimum valid integer value
      * @param max the maximum valid integer value
      *
-     * @return the integer value corresponding to the specified key.
+     * @return the integer value corresponding to the specified key
      *
+     * @throws IllegalArgumentException if {@code min > max}
      * @throws IllegalArgumentException if
-     * {@code (min>max) || (defaultValue<min) || (defaultValue>max)}
+     * {@code defaultValue < min || defaultValue > max}
      * @throws IllegalArgumentException if
-     * {@code isRequired && map.get(key)==null}
+     * {@code isRequired == true && map.get(key) == null}
      * @throws IllegalArgumentException if
-     * {@code map.get(key)!=null
-     *  && (Integer.parseInt(map.get(key))<min
-     *       || Integer.parseInt(map.get(key))>max)}
-     * @throws NumberFormatException if
-     * {@code map.get!=null}
-     * and {@code map.get(key)} is not {@code null} or a parsable
-     * {@code int}
-     * @throws NullPointerException if {@code key==null || map==null}
+     * {@code map.get(key) != null
+     *  && (Integer.parseInt(map.get(key)) < min
+     *       || Integer.parseInt(map.get(key)) > max)}
+     * @throws NumberFormatException if {@code map.get(key) != null}
+     * and {@code map.get(key)} is not a parsable {@code int}
+     * @throws NullPointerException if {@code key == null || map == null}
      */
     public static int intArg(String key, Map<String, String> map,
             boolean isRequired, int defaultValue, int min, int max) {
@@ -192,30 +198,29 @@ public final class Validate {
      * Removes the specified key from the specified map, and returns the
      * long value corresponding to the specified key.
      *
-     * @param key the key.
-     * @param map a map of key-value pairs.
+     * @param key the key
+     * @param map a map of key-value pairs
      * @param isRequired {@code true} if the specified key
-     * is required to be in the specified map.
+     * is required to be in the specified map, and {@code false} otherwise
      * @param defaultValue the value that will be returned if
-     *   {@code (isRequired==false && map.get(key)==null)}.
+     *   {@code (isRequired == false && map.get(key) == null)}
      * @param min the minimum valid long value
      * @param max the maximum valid long value
      *
-     * @return the long value corresponding to the specified key.
+     * @return the long value corresponding to the specified key
      *
+     * @throws IllegalArgumentException if {@code min > max}
      * @throws IllegalArgumentException if
-     * {@code (min>max) || (defaultValue<min) || (defaultValue>max)}
+     * {@code defaultValue < min || defaultValue > max}
      * @throws IllegalArgumentException if
-     * {@code isRequired && map.get(key)==null}
+     * {@code isRequired == true && map.get(key) == null}
      * @throws IllegalArgumentException if
-     * {@code map.get(key)!=null
-     *  && (Long.parseLong(map.get(key))<min
-     *       || Long.parseLong(map.get(key))>max)}
-     * @throws NumberFormatException if
-     * {@code map.get!=null}
-     * and {@code map.get(key)} is not {@code null} or a parsable
-     * {@code long}
-     * @throws NullPointerException if {@code key==null || map==null}
+     * {@code map.get(key) != null
+     *  && (Long.parseLong(map.get(key)) < min
+     *       || Long.parseLong(map.get(key)) > max)}
+     * @throws NumberFormatException if {@code map.get(key) != null}
+     * and {@code map.get(key)} is not a parsable {@code long}
+     * @throws NullPointerException if {@code key == null || map == null}
      */
     public static long longArg(String key, Map<String, String> map,
             boolean isRequired, long defaultValue, long min, long max) {
@@ -239,32 +244,31 @@ public final class Validate {
      * Removes the specified key from the specified map, and returns the
      * float value corresponding to the specified key.
      *
-     * @param key the key.
-     * @param map a map of key-value pairs.
+     * @param key the key
+     * @param map a map of key-value pairs
      * @param isRequired {@code true} if the specified key
-     * is required to be in the specified map.
+     * is required to be in the specified map, and {@code false} otherwise
      * @param defaultValue the value that will be returned if
-     *   {@code (isRequired==false && map.get(key)==null)}.
+     *   {@code (isRequired == false && map.get(key) == null)}
      * @param min the minimum valid float value
      * @param max the maximum valid float value
      *
-     * @return the float value corresponding to the specified key.
+     * @return the float value corresponding to the specified key
      *
+     * @throws IllegalArgumentException if {@code min > max}
      * @throws IllegalArgumentException if
-     * {@code (min>max) || (defaultValue<min) || (defaultValue>max)
-     * || Float.isNan(defaultValue)==true}
+     * {@code defaultValue < min || defaultValue > max
+     *        || Float.isNan(defaultValue)==true}
      * @throws IllegalArgumentException if
-     * {@code isRequired && map.get(key)==null}
+     * {@code isRequired == true && map.get(key) == null}
      * @throws IllegalArgumentException if
-     * {@code map.get(key)!=null
-     *  && (Float.parseFloat(map.get(key))<min
-     *       || Float.parseFloat(map.get(key))>max
+     * {@code map.get(key) != null
+     *  && (Float.parseFloat(map.get(key)) < min
+     *       || Float.parseFloat(map.get(key)) > max
      *       || Float.isNaN(map.get(key))}
-     * @throws NumberFormatException if
-     * {@code map.get!=null}
-     * and {@code map.get(key)} is not {@code null} or a parsable
-     * {@code float}
-     * @throws NullPointerException if {@code key==null || map==null}
+     * @throws NumberFormatException if {@code map.get(key) != null}
+     * and {@code map.get(key)} is not a parsablbe {@code float}
+     * @throws NullPointerException if {@code key == null || map == null}
      */
     public static float floatArg(String key, Map<String, String> map,
             boolean isRequired, float defaultValue, float min, float max) {
@@ -288,32 +292,31 @@ public final class Validate {
      * Removes the specified key from the specified map, and returns the
      * double value corresponding to the specified key.
      *
-     * @param key the key.
-     * @param map a map of key-value pairs.
+     * @param key the key
+     * @param map a map of key-value pairs
      * @param isRequired {@code true} if the specified key
-     * is required to be in the specified map.
+     * is required to be in the specified map, and {@code false} otherwise
      * @param defaultValue the value that will be returned if
-     *   {@code (isRequired==false && map.get(key)==null)}.
+     *   {@code (isRequired == false && map.get(key) == null)}
      * @param min the minimum valid double value
      * @param max the maximum valid double value
      *
-     * @return the double value corresponding to the specified key.
+     * @return the double value corresponding to the specified key
      *
+     * @throws IllegalArgumentException if {@code min > max}
      * @throws IllegalArgumentException if
-     * {@code (min>max) || (defaultValue<min) || (defaultValue>max)
-     * || Double.isNan(defaultValue)==true}
+     * {@code defaultValue < min || defaultValue > max
+     *        || Double.isNan(defaultValue)==true}
      * @throws IllegalArgumentException if
-     * {@code isRequired && map.get(key)==null}
+     * {@code isRequired == true && map.get(key) == null}
      * @throws IllegalArgumentException if
-     * {@code map.get(key)!=null
-     *  && (Double.parseDouble(map.get(key))<min
-     *       || Double.parseDouble(map.get(key))>max
+     * {@code map.get(key) != null
+     *  && (Double.parseDouble(map.get(key)) < min
+     *       || Double.parseDouble(map.get(key)) > max
      *       || Double.isNaN(map.get(key))}
-     * @throws NumberFormatException if
-     * {@code map.get!=null}
-     * and {@code map.get(key)} is not {@code null} or a parsable
-     * {@code double}
-     * @throws NullPointerException if {@code key==null || map==null}
+     * @throws NumberFormatException if {@code map.get(key) != null}
+     * and {@code map.get(key)} is not a parsable {@code double}
+     * @throws NullPointerException if {@code key == null || map == null}
      */
     public static double doubleArg(String key, Map<String, String> map,
             boolean isRequired, double defaultValue, double min, double max) {
@@ -342,22 +345,22 @@ public final class Validate {
      * {@code (v.equalsIgnoreCase("false") || v.equalsIgnoreCase("f"))}.
      *
      * @param key the key
-     * @param map a map of key-value pairs.
+     * @param map a map of key-value pairs
      * @param isRequired {@code true} if the specified key
-     * is required to be in the specified map.
+     * is required to be in the specified map, and {@code false} otherwise
      * @param defaultValue the value that will be returned if
-     *   {@code (isRequired==false && map.get(key)==null)}.
+     *   {@code (isRequired == false && map.get(key) == null)}
      *
-     * @return the boolean value corresponding to the specified key.
+     * @return the boolean value corresponding to the specified key
      *
      * @throws IllegalArgumentException if
-     * {@code isRequired && map.get(key)==null}
+     * {@code isRequired == true && map.get(key) == null}
      * @throws IllegalArgumentException if the value
-     * {@code v=map.get(key) && v!=null &&
-     * false==(v.equalsIgnoreCase("true") || v.equalsIgnoreCase("t")
+     * {@code (v = map.get(key)) != null &&
+     * false == (v.equalsIgnoreCase("true") || v.equalsIgnoreCase("t")
      *   || v.equalsIgnoreCase("false") || v.equalsIgnoreCase("f"))
      * }
-     * @throws NullPointerException if {@code key==null || map==null}.
+     * @throws NullPointerException if {@code key == null || map == null}
      */
     public static boolean booleanArg(String key, Map<String, String> map,
             boolean isRequired, boolean defaultValue) {
@@ -378,31 +381,29 @@ public final class Validate {
 
     /**
      * Removes the specified key from the specified map, and returns the
-     * string value corresponding to the specified key.
+     * string value corresponding to the specified key.  The value is permitted
+     * to be {@code null}
      *
-     * @param key the key.
-     * @param map a map of key-value pairs.
+     * @param key the key
+     * @param map a map of key-value pairs
      * @param isRequired {@code true} if the specified key
-     * is required to be in the specified map.
+     * is required to be in the specified map, and {@code false} otherwise
      * @param defaultValue the value that will be returned if
-     *   {@code (isRequired==false && map.get(key)==null)}.
-     * @param possibleValues an array of valid values or {@code null} if
-     * any non-null, non-empty string is valid.
+     *   {@code (isRequired == false && map.get(key) == null)}
+     * @param possibleValues an array of valid string values or {@code null} if
+     * the valid values are {@code null} and all non-empty strings.
      *
-     * @return the string value corresponding to the specified key.
+     * @return the string value corresponding to the specified key
      *
      * @throws IllegalArgumentException if
-     * {@code isRequired && map.get(key)==null}
+     * {@code isRequired == true && map.get(key) == null}
      * @throws IllegalArgumentException if
-     * {@code possibleValues!=null} and {@code
-     * (possibleValues[j]==null ? defaultValue==null : s.equals(defaultValue))==false}
-     * for all {@code j} satisfying {@code 0<=j && j<possibleValues.length}
+     * {@code possibleValues != null} and {@code defaultValue} does not
+     * equal any element of the {@code possibleValues} array
      * @throws IllegalArgumentException if
-     * {@code possibleValues!=null} and {@code
-     * (possibleValues[j]==null ? map.get(key)==null : s.equals(map.get(key))==false}
-     * for all {@code j} satisfying {@code 0<=j && j<possibleValues.length}
-     * @throws NullPointerException if
-     * {@code key==null || map==null}
+     * {@code possibleValues != null} and {@code map.get(key)} does not
+     * equal any element of the {@code possibleValues} array
+     * @throws NullPointerException if {@code key == null || map == null}
      */
     public static String stringArg(String key, Map<String, String> map,
             boolean isRequired, String defaultValue, String[] possibleValues) {
@@ -563,7 +564,7 @@ public final class Validate {
             boolean foundMatch = false;
             for (int j=0; j<possibleValues.length && foundMatch==false; ++j) {
                 String s = possibleValues[j];
-                foundMatch = (s==null) ? value==null : s.equals(value);
+                foundMatch = (s==null) ? value==null : s.equalsIgnoreCase(value);
             }
             if (foundMatch==false) {
                 String s = "Error in \"" + key + "\" argument: \"" + value

@@ -24,7 +24,7 @@ import java.util.Map;
 import main.NuclearFamilies;
 
 /**
- * <p>Class {@code Weights} determines per-haplotype weights.
+ * <p>Class {@code Weights} represents per-haplotype weights.
  * </p>
  * Instances of class {@code Weights} are immutable.
  *
@@ -38,8 +38,8 @@ public class Weights {
     /**
      * Constructs a new {@code Weights} instance with a weight of 1.0f
      * for all samples.
-     * @param fam the parent-offspring relationships.
-     * @throws NullPointerException if {@code fam==null}
+     * @param fam the parent-offspring relationships
+     * @throws NullPointerException if {@code fam == null}
      */
     public Weights(NuclearFamilies fam) {
         this(fam, 1.0f);
@@ -48,13 +48,13 @@ public class Weights {
     /**
      * Constructs a new {@code Weights} instance with a weight of 1.0f
      * for reference samples, and a weight of {@code nonRefWt} for
-     * nonreference samples.  Non-reference samples are samples
+     * non-reference samples.  Non-reference samples are samples
      * which are not present in {@code fam.samples()}.
-     * @param fam the parent-offspring data.
-     * @param nonRefWt the nonreference sample weight.
+     * @param fam the parent-offspring data
+     * @param nonRefWt the non-reference sample weight
      * @throws IllegalArgumentException if
-     * {@code nonRefWt<0.0f || nonRefWt>1.0f || Float.isNaN(nonRefWt)}
-     * @throws NullPointerException if {@code fam==null}
+     * {@code nonRefWt < 0.0f || nonRefWt > 1.0f || Float.isNaN(nonRefWt)}
+     * @throws NullPointerException if {@code fam == null}
      */
     public Weights(NuclearFamilies fam, float nonRefWt) {
         if (fam==null) {
@@ -79,10 +79,10 @@ public class Weights {
      * The first haplotype in the offspring is required to be the transmitted
      * transmitted haplotype for a parent-offspring duo.
      *
-     * @param haps an array of haplotype pairs.
-     * @return an array of per-haplotype weights.
+     * @param haps an array of haplotype pairs
+     * @return an array of per-haplotype weights
      *
-     * @throws NullPointerException if {@code hapPairs==null}
+     * @throws NullPointerException if {@code hapPairs == null}
      */
     public float[] get(HapPairs haps) {
         Samples samples = families().samples();
@@ -90,7 +90,7 @@ public class Weights {
         Map<Integer, Integer> cntMap = cntMap(haps);
         int hapIndex = 0;
         for (int j=0, n=haps.nHapPairs(); j<n; ++j) {
-            int idIndex = haps.idIndex(j);
+            int idIndex = haps.samples(j).idIndex(haps.sampleIndex(j));
             int sampleIndex = samples.index(idIndex);
             int parentCnt = 0;
             if (sampleIndex != -1) {
@@ -114,15 +114,15 @@ public class Weights {
     }
 
     /*
-     * Returns a map from ID index to the number of haplotype pairs with the
-     * ID index.
+     * Returns a map from the haplotype ID index to the number of
+     * haplotype pairs with the ID index.
      */
     private static Map<Integer, Integer> cntMap(HapPairs haps) {
         int nHapPairs = haps.nHapPairs();
         int initCapacity = 1 + (3*nHapPairs + 1)/2;
         Map<Integer, Integer> cntMap = new HashMap<>(initCapacity);
         for (int j=0; j<nHapPairs; ++j) {
-            int idIndex = haps.idIndex(j);
+            int idIndex = haps.samples(j).idIndex(haps.sampleIndex(j));
             Integer value = cntMap.get(idIndex);
             if (value==null) {
                 value = 0;
@@ -134,7 +134,7 @@ public class Weights {
 
     /**
      * Returns the parent-offspring relationships.
-     * @return the nuclear families.
+     * @return the parent-offspring relationships
      */
     public NuclearFamilies families() {
         return fam;
@@ -142,7 +142,7 @@ public class Weights {
 
     /**
      * Returns the non-reference sample weight.
-     * @return the non-reference sample weight.
+     * @return the non-reference sample weight
      */
     public float nonRefWt() {
         return nonRefWt;
