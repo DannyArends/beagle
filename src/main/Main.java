@@ -65,8 +65,8 @@ public class Main {
     /**
      * The program name and version.
      */
-    public static final String program = "beagle.07Jan16.9b4.jar (version 4.1)";
-    public static final String command = "java -jar beagle.07Jan16.9b4.jar";
+    public static final String program = "beagle.14Jan16.841.jar (version 4.1)";
+    public static final String command = "java -jar beagle.14Jan16.841.jar";
 
     /**
      * The copyright string.
@@ -78,7 +78,7 @@ public class Main {
      */
     public static final String shortHelp = Main.program
             + Const.nl + Main.copyright
-            + Const.nl + "Enter \"java -jar beagle.07Jan16.9b4.jar\" for a "
+            + Const.nl + "Enter \"java -jar beagle.14Jan16.841.jar\" for a "
             + "summary of command line " + "arguments.";
 
     private final Par par;
@@ -102,6 +102,8 @@ public class Main {
             System.exit(0);
         }
         Par par = parameters(args);
+        System.setProperty("java.util.concurrent.ForkJoinPool.common.parallelism",
+                String.valueOf(par.nthreads()));
         RunStats runStats = new RunStats(par);
         runStats.printStartInfo();
         GeneticMap genMap = geneticMap(par);

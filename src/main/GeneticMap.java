@@ -117,7 +117,7 @@ public interface GeneticMap {
      * @throws IllegalArgumentException if {@code ne < 1f}
      * @throws NullPointerException if {@code markers == null}
      */
-    default float[] pRecomb(Markers markers, int nHaps, float ne) {
+    default double[] pRecomb(Markers markers, int nHaps, double ne) {
         if (nHaps < 1) {
             throw new IllegalArgumentException(String.valueOf(nHaps));
         }
@@ -126,7 +126,7 @@ public interface GeneticMap {
         }
         double MIN_CM_DIST = 1e-7;
         int chrom = markers.marker(0).chromIndex();
-        float[] pRecomb = new float[markers.nMarkers()];
+        double[] pRecomb = new double[markers.nMarkers()];
         double c = -(0.04*ne/nHaps);    // 0.04 = 4/(100 cM/M)
         double lastGenPos = this.genPos(chrom, markers.marker(0).pos());
         pRecomb[0] = 0f;
@@ -138,5 +138,4 @@ public interface GeneticMap {
         }
         return pRecomb;
     }
-
 }
