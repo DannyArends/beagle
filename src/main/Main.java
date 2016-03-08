@@ -65,8 +65,8 @@ public class Main {
     /**
      * The program name and version.
      */
-    public static final String program = "beagle.14Jan16.841.jar (version 4.1)";
-    public static final String command = "java -jar beagle.14Jan16.841.jar";
+    public static final String program = "beagle.27Jan16.aae.jar (version 4.1)";
+    public static final String command = "java -jar beagle.27Jan16.aae.jar";
 
     /**
      * The copyright string.
@@ -78,7 +78,7 @@ public class Main {
      */
     public static final String shortHelp = Main.program
             + Const.nl + Main.copyright
-            + Const.nl + "Enter \"java -jar beagle.14Jan16.841.jar\" for a "
+            + Const.nl + "Enter \"java -jar beagle.27Jan16.aae.jar\" for a "
             + "summary of command line " + "arguments.";
 
     private final Par par;
@@ -102,8 +102,6 @@ public class Main {
             System.exit(0);
         }
         Par par = parameters(args);
-        System.setProperty("java.util.concurrent.ForkJoinPool.common.parallelism",
-                String.valueOf(par.nthreads()));
         RunStats runStats = new RunStats(par);
         runStats.printStartInfo();
         GeneticMap genMap = geneticMap(par);
@@ -194,17 +192,15 @@ public class Main {
     private void printOutput(CurrentData cd, SampleHapPairs targetHapPairs,
             AlleleProbs alProbs, Map<IntPair, List<IbdSegment>> ibd) {
         assert par.gt()!=null;
-        if (cd.nTargetMarkers() == cd.nMarkers()){
-            boolean printGprobs = false;
-            boolean r2 = false;
-            windowOut.print(cd, alProbs, r2, printGprobs);
-        }
-        else {
+        boolean markersAreImputed = false;
+        boolean printGprobs = false;
+        if (cd.nTargetMarkers() < cd.nMarkers()){
             alProbs = new ConstrainedAlleleProbs(targetHapPairs, alProbs,
                     cd.targetMarkerIndices());
-            boolean r2 = true;
-            windowOut.print(cd, alProbs, r2, par.gprobs());
+            markersAreImputed = true;
+            printGprobs = par.gprobs();
         }
+        windowOut.print(cd, alProbs, markersAreImputed, printGprobs);
         if (par.ibd()) {
             windowOut.printIbd(cd, ibd);
         }

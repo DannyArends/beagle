@@ -89,7 +89,7 @@ public final class Par {
      * is incorrectly specified
      */
     public Par(String[] args) {
-        short SMAX = Short.MAX_VALUE;
+
         int IMAX = Integer.MAX_VALUE;
         long LMIN = Long.MIN_VALUE;
         long LMAX = Long.MAX_VALUE;
@@ -122,7 +122,7 @@ public final class Par {
         maxlr = Validate.floatArg("maxlr", argsMap, false, 5000.0f, 1.1f, FMAX);
 
         // algorithm parameters
-        nthreads = Validate.intArg("nthreads", argsMap, false, 4, 1, SMAX);
+        nthreads = Validate.intArg("nthreads", argsMap, false, 1, 1, 100000);
         lowmem = Validate.booleanArg("lowmem", argsMap, false, true);
         window = Validate.intArg("window", argsMap, false, 50000, 1, IMAX);
         overlap = Validate.intArg("overlap", argsMap, false, 3000, 0, IMAX);

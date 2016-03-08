@@ -81,7 +81,7 @@ public class BasicMarker implements Marker {
      * in the specified {@code ids} array does not conform to the VCF
      * specification, if any allele identifier in the specified {@code alleles}
      * array does not conform to the VCF specification, or if
-     * {@code (end != -1 && end <= pos)}.
+     * {@code (end != -1 && end < pos)}.
      * @param chrom a chromosome index
      * @param pos the marker position
      * @param ids a list of marker identifiers
@@ -212,7 +212,7 @@ public class BasicMarker implements Marker {
     }
 
     private static void checkEnd(int chrom, int pos, int end) {
-        if (end != -1 && end <= pos) {
+        if (end != -1 && end < pos) {
             String s = "ERROR: invalid INFO:END field at "
                     + coordinate(chrom, pos) + " [" + end + "]";
             Utilities.exit(s);

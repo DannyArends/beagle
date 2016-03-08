@@ -141,7 +141,7 @@ public class WindowWriter implements Closeable {
      *
      * @param cd the input data for the current marker window
      * @param alProbs the estimated haplotype allele probabilities
-     * @param r2 {@code true} if squared dosage correlation should be printed,
+     * @param imputed {@code true} if there are imputed markers,
      * and {@code false} otherwise
      * @param gprobs {@code true} if the GP field should be printed, and
      * {@code false} otherwise
@@ -155,7 +155,7 @@ public class WindowWriter implements Closeable {
      * {@code cd.markers().equals(alProbs.markers()) == false}
      * @throws NullPointerException if {@code cd == null || alProbs == null}
      */
-    public void print(CurrentData cd, AlleleProbs alProbs, boolean r2,
+    public void print(CurrentData cd, AlleleProbs alProbs, boolean imputed,
             boolean gprobs) {
         if (isClosed) {
             throw new IllegalStateException("isClosed()==true");
@@ -169,7 +169,7 @@ public class WindowWriter implements Closeable {
         }
         int start = cd.prevSplice();
         int end = cd.nextSplice();
-        VcfWriter.appendRecords(alProbs, start, end, r2, gprobs, vcfOut);
+        VcfWriter.appendRecords(alProbs, start, end, imputed, gprobs, vcfOut);
         vcfOut.flush();
     }
 

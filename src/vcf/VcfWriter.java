@@ -238,7 +238,7 @@ public final class VcfWriter {
      * @param alProbs the sample haplotype pairs
      * @param start the starting marker index (inclusive)
      * @param end the ending marker index (exclusive)
-     * @param r2 {@code true} if squared dosage correlation should be printed,
+     * @param imputed {@code true} if there are imputed markers,
      * and {@code false} otherwise
      * @param gprobs {@code true} if the GP field should be printed, and
      * {@code false} otherwise.
@@ -250,14 +250,14 @@ public final class VcfWriter {
      * @throws NullPointerException if {@code haps == null || out == null}
      */
     public static void appendRecords(AlleleProbs alProbs, int start, int end,
-            boolean r2, boolean gprobs, PrintWriter out) {
+            boolean imputed, boolean gprobs, PrintWriter out) {
         if (start > end) {
             throw new IllegalArgumentException("start=" + start + " end=" + end);
         }
         for (int marker=start; marker<end; ++marker) {
-            printFixedFields(alProbs, marker, r2, gprobs, out);
+            printFixedFields(alProbs, marker, imputed, gprobs, out);
             for (int sample=0, n=alProbs.nSamples(); sample<n; ++sample) {
-                printGTandDose(alProbs, marker, sample, out);
+                printGTandDose(alProbs, marker, sample, imputed, out);
                 if (gprobs) {
                      printGP(alProbs, marker, sample, out);
                 }
@@ -267,17 +267,19 @@ public final class VcfWriter {
     }
 
     private static void printGTandDose(AlleleProbs alProbs, int marker, int
-            sample, PrintWriter out) {
+            sample, boolean imputed, PrintWriter out) {
         out.print(Const.tab);
         out.print(alProbs.allele1(marker, sample));
         out.append(Const.phasedSep);
         out.print(alProbs.allele2(marker, sample));
-        int nAlleles = alProbs.marker(marker).nAlleles();
-        for (int j = 1; j < nAlleles; ++j) {
-            float p1 = alProbs.alProb1(marker, sample, j);
-            float p2 = alProbs.alProb2(marker, sample, j);
-            out.print( (j==1) ? Const.colon : Const.comma );
-            out.print(df2.format(p1 + p2));
+        if (imputed) {
+            int nAlleles = alProbs.marker(marker).nAlleles();
+            for (int j = 1; j < nAlleles; ++j) {
+                float p1 = alProbs.alProb1(marker, sample, j);
+                float p2 = alProbs.alProb2(marker, sample, j);
+                out.print( (j==1) ? Const.colon : Const.comma );
+                out.print(df2.format(p1 + p2));
+            }
         }
     }
 
@@ -343,7 +345,7 @@ public final class VcfWriter {
     }
 
     private static void printFixedFields(AlleleProbs alProbs,
-            int marker, boolean r2, boolean gprobs, PrintWriter out) {
+            int marker, boolean printR2, boolean gprobs, PrintWriter out) {
         GprobsStatistics gpm = new GprobsStatistics(alProbs, marker);
         float[] alleleFreq = gpm.alleleFreq();
         out.print(alProbs.marker(marker));
@@ -351,7 +353,7 @@ public final class VcfWriter {
         out.print(Const.MISSING_DATA_CHAR); // QUAL
         out.print(Const.tab);
         out.print(PASS);                    // FILTER
-        if (r2) {
+        if (printR2) {
             out.print(Const.tab);
             out.print("AR2=");                  // INFO
             out.print(df2_fixed.format(gpm.allelicR2()));
@@ -368,6 +370,11 @@ public final class VcfWriter {
             out.print(Const.MISSING_DATA_CHAR);
         }
         out.print(Const.tab);
-        out.print( gprobs ? "GT:DS:GP" : "GT:DS");
+        if (printR2) {
+            out.print(gprobs ? "GT:DS:GP" : "GT:DS");
+        }
+        else {
+            out.print("GT");
+        }
     }
 }
