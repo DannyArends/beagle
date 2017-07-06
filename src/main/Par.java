@@ -43,6 +43,7 @@ public final class Par {
     private final File dag;
     private final String out;
     private final File excludesamples;
+    private final File excludefromref;
     private final File excludemarkers;
     private final File ped;
     private final File map;
@@ -113,6 +114,8 @@ public final class Par {
         out = Validate.stringArg("out", argsMap, true, null, null);
         excludesamples = Validate.getFile(
                 Validate.stringArg("excludesamples", argsMap, false, null, null));
+        excludefromref = Validate.getFile(
+                Validate.stringArg("excludefromref", argsMap, false, null, null));
         excludemarkers = Validate.getFile(
                 Validate.stringArg("excludemarkers", argsMap, false, null, null));
         ped = Validate.getFile(
@@ -311,6 +314,17 @@ public final class Par {
      */
     public File excludesamples() {
         return excludesamples;
+    }
+
+    /**
+     * Returns the excludefromref parameter or {@code null}
+     * if no excludefromref parameter was specified.
+     *
+     * @return the excludefromref parameter or {@code null}
+     * if no excludefromref parameter was specified
+     */
+    public File excludefromref() {
+        return excludefromref;
     }
 
     /**
