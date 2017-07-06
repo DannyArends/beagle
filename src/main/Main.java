@@ -304,7 +304,7 @@ public class Main {
         }
         else {
             FileIt<String> it = InputIt.fromGzipFile(par.ref());
-            refIt = RefIt.create(it, sampleFilter, markerFilter,
+            refIt = RefIt.create(it, referenceFilter, markerFilter,
                     RefIt.DEFAULT_EM_BUFFER_SIZE);
         }
         if (chromInterval!=null) {
