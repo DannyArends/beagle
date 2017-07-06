@@ -22,4 +22,10 @@ compile:
 
 Run using the new jar:
 
-java -jar build/jar/beagle.jar
+    java -jar build/jar/beagle.jar
+
+Updates:
+--------
+
+The following changes are made: A new input parameter _excludefromref_ to exclude samples from the reference vcf file. This has been done to use a sample filter on the reference vcf file, previously _excludesamples_ was used to filter the input gt, gl and/or gtgl files and the reference vcf file.
+
