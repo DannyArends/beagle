@@ -266,6 +266,8 @@ public class Main {
     private static Data allData(Par par) {
         Filter<String> sampleFilter = FilterUtil.sampleFilter(
                 par.excludesamples());
+        Filter<String> referenceFilter = FilterUtil.sampleFilter(
+                par.excludefromref());
         Filter<Marker> markerFilter = FilterUtil.markerFilter(
                 par.excludemarkers());
         ChromInterval chromInterval = ChromInterval.parse(par.chrom());
