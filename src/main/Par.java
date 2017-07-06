@@ -179,6 +179,7 @@ public final class Par {
                 + "  ref=<VCF file with phased genotypes>               (optional)" + nl
                 + "  out=<output file prefix>                           (required)" + nl
                 + "  excludesamples=<file with 1 sample ID per line>    (optional)" + nl
+                + "  excludefromref=<file with 1 sample ID per line>    (optional)" + nl
                 + "  excludemarkers=<file with 1 marker ID per line>    (optional)" + nl
 //                + "  ped=<linkage format pedigree file>                 (optional)" + nl
                 + "  map=<PLINK map file with cM units>                 (optional)" + nl
